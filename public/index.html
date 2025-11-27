@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FTP & 웹 서버 학습 페이지</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            position: relative;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 800px;
+            width: 100%;
+            padding: 40px;
+            animation: fadeIn 0.5s ease-in;
+            position: relative;
+        }
+        
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+            text-align: center;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+        
+        .info-section {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+        
+        .info-section h2 {
+            color: #764ba2;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+        }
+        
+        .info-section ul {
+            list-style-position: inside;
+            line-height: 1.8;
+            color: #555;
+        }
+        
+        .info-section li {
+            margin: 8px 0;
+        }
+        
+        .code-block {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            margin: 15px 0;
+            overflow-x: auto;
+            font-size: 0.9em;
+        }
+        
+        .success-badge {
+            display: inline-block;
+            background: #28a745;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            margin-top: 10px;
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 2px solid #eee;
+            color: #888;
+        }
+        
+        .timestamp {
+            background: #e9ecef;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+            margin-top: 20px;
+            font-family: monospace;
+            color: #495057;
+        }
+        
+        .nav-buttons {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        
+        .nav-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9em;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+        
+        .nav-btn:hover {
+            background: #764ba2;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
+        
+        .nav-btn.simple {
+            background: #28a745;
+        }
+        
+        .nav-btn.simple:hover {
+            background: #218838;
+        }
+        
+        .nav-btn.world {
+            background: #ff9800;
+        }
+        
+        .nav-btn.world:hover {
+            background: #fb8c00;
+        }
+        
+        .nav-btn.gallery {
+            background: #9c27b0;
+        }
+        
+        .nav-btn.gallery:hover {
+            background: #ab47bc;
+        }
+        
+        .app-grid-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 40px 0;
+        }
+        
+        .category-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 600px;
+            margin-bottom: 20px;
+            padding: 0 10px;
+        }
+        
+        .category-title {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .category-count {
+            color: #666;
+            font-size: 0.9em;
+        }
+        
+        .app-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+            gap: 20px;
+            max-width: 600px;
+            width: 100%;
+            padding: 20px;
+            background: #f5f5f5;
+            border-radius: 15px;
+            box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .app-icon {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+            color: #333;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            padding: 15px 10px;
+            border-radius: 12px;
+            background: white;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .app-icon:hover {
+            transform: translateY(-5px) scale(1.05);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        .app-icon-image {
+            width: 60px;
+            height: 60px;
+            border-radius: 12px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5em;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        }
+        
+        .app-icon.disk .app-icon-image {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        }
+        
+        .app-icon.world .app-icon-image {
+            background: linear-gradient(135deg, #ff9800 0%, #ff6f00 100%);
+        }
+        
+        .app-icon.gallery .app-icon-image {
+            background: linear-gradient(135deg, #9c27b0 0%, #ab47bc 100%);
+        }
+        
+        .app-icon-name {
+            font-size: 0.75em;
+            text-align: center;
+            color: #555;
+            font-weight: 500;
+            word-break: keep-all;
+            line-height: 1.2;
+        }
+        
+        .learning-section {
+            margin-top: 50px;
+            padding-top: 30px;
+            border-top: 2px solid #eee;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 FTP & 웹 서버 학습</h1>
+        <p class="subtitle">윈도우 → FTP → 리눅스 웹 서버 연동 성공!</p>
+        
+        <div class="app-grid-container">
+            <div class="category-header">
+                <span class="category-title">Category</span>
+                <span class="category-title" style="text-align: center; flex: 1;">Applications</span>
+                <span class="category-count">3 apps</span>
+            </div>
+            <div class="app-grid">
+                <a href="disk_info.php" class="app-icon disk">
+                    <div class="app-icon-image">💾</div>
+                    <div class="app-icon-name">디스크<br>정보</div>
+                </a>
+                <a href="world_time.html" class="app-icon world">
+                    <div class="app-icon-image">🌍</div>
+                    <div class="app-icon-name">세계<br>시간</div>
+                </a>
+                <a href="gallery.php" class="app-icon gallery">
+                    <div class="app-icon-image">🖼️</div>
+                    <div class="app-icon-name">사진<br>보기</div>
+                </a>
+            </div>
+        </div>
+        
+        <div class="learning-section">
+            <div class="info-section">
+                <h2>📋 학습 목표</h2>
+                <ul>
+                    <li>윈도우에서 HTML 파일 생성</li>
+                    <li>FTP 서버를 통한 파일 전송</li>
+                    <li>리눅스에서 파일 수신 및 웹 서버 설정</li>
+                    <li>웹 브라우저를 통한 페이지 확인</li>
+                </ul>
+            </div>
+            
+            <div class="info-section">
+                <h2>🔧 사용된 기술</h2>
+                <ul>
+                    <li><strong>FTP 프로토콜:</strong> 파일 전송</li>
+                    <li><strong>웹 서버:</strong> Nginx 또는 Apache</li>
+                    <li><strong>HTML/CSS:</strong> 웹 페이지 구성</li>
+                </ul>
+            </div>
+            
+            <div class="info-section">
+                <h2>💻 주요 명령어</h2>
+                <div class="code-block">
+# FTP 접속
+ftp &lt;윈도우_IP&gt;
+
+# 또는 wget 사용
+wget ftp://user:password@윈도우_IP/index.html
+
+# 웹 서버 디렉토리로 이동
+sudo mv index.html /var/www/html/
+                </div>
+            </div>
+            
+            <div class="success-badge">✅ 웹 서버 연동 완료!</div>
+            
+            <div class="timestamp" id="timestamp"></div>
+            
+            <div class="footer">
+                <p>이 페이지는 FTP를 통해 전송되어 리눅스 웹 서버에서 실행 중입니다.</p>
+                <p style="margin-top: 10px;">🎓 학습 목적으로 제작되었습니다.</p>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // 현재 시간 표시
+        function updateTimestamp() {
+            const now = new Date();
+            const options = { 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                timeZoneName: 'short'
+            };
+            document.getElementById('timestamp').textContent = 
+                '🕐 서버 시간: ' + now.toLocaleString('ko-KR', options);
+        }
+        
+        updateTimestamp();
+        setInterval(updateTimestamp, 1000);
+    </script>
+</body>
+</html>
+

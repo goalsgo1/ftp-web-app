@@ -1,0 +1,60 @@
+name: Deploy to Production Server
+
+# 워크플로우 트리거 설정
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:  # GitHub에서 수동 실행 가능
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 코드 체크아웃
+        uses: actions/checkout@v3
+      
+      - name: 🔐 SSH 키 설정
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          
+          # 서버 호스트 키 확인을 위해 known_hosts에 추가
+          ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
+      
+      - name: ✅ SSH 연결 테스트
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            "echo 'SSH 연결 성공!'"
+      
+      - name: 🚀 서버 배포 실행
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ~/.ssh/deploy_key
+          script: |
+            cd /var/www/myapp
+            ./deploy.sh
+            
+      - name: ✅ 배포 상태 확인
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ~/.ssh/deploy_key
+          script: |
+            echo "=== 배포 상태 확인 ==="
+            ls -la /var/www/myapp/current/public/ | head -10
+            echo ""
+            echo "=== 최신 릴리즈 ==="
+            ls -lt /var/www/myapp/releases/ | head -5
+      
+      - name: 🎉 배포 완료 알림
+        run: |
+          echo "✅ 배포가 성공적으로 완료되었습니다!"
+          echo "📍 서버: ${{ secrets.DEPLOY_HOST }}"
+          echo "📍 브랜치: ${{ github.ref }}"
+          echo "📍 커밋: ${{ github.sha }}"
