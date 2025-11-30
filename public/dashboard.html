@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>대시보드 - 보호된 페이지</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 20px 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            color: #667eea;
+            font-size: 1.8em;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .user-name {
+            font-weight: bold;
+            color: #333;
+        }
+
+        .logout-btn {
+            padding: 8px 16px;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+
+        .logout-btn:hover {
+            background: #c82333;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            animation: fadeIn 0.5s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .card h2 {
+            color: #667eea;
+            margin-bottom: 16px;
+            font-size: 1.4em;
+        }
+
+        .card p {
+            color: #666;
+            line-height: 1.6;
+        }
+
+        .protected-content {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 16px;
+            border-left: 4px solid #28a745;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-top: 20px;
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: white;
+            font-size: 1.2em;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading" class="loading">로딩 중...</div>
+    
+    <div id="dashboard" class="container" style="display: none;">
+        <div class="header">
+            <h1>🎯 대시보드</h1>
+            <div class="user-info">
+                <span class="user-name" id="user-name"></span>
+                <button class="logout-btn" id="logout-btn">로그아웃</button>
+            </div>
+        </div>
+
+        <div class="dashboard-grid">
+            <div class="card">
+                <h2>👤 사용자 정보</h2>
+                <p>현재 로그인한 사용자의 정보입니다.</p>
+                <div class="protected-content">
+                    <p><strong>이메일:</strong> <span id="user-email"></span></p>
+                    <p><strong>UID:</strong> <span id="user-uid"></span></p>
+                    <p><strong>가입일:</strong> <span id="user-created"></span></p>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>🔒 보호된 콘텐츠</h2>
+                <p>이 영역은 로그인한 사용자만 볼 수 있습니다.</p>
+                <div class="protected-content">
+                    <p>✅ 인증 성공! 이제 유료 기능이나 개인화된 콘텐츠를 여기에 추가할 수 있습니다.</p>
+                    <ul style="margin-top: 12px; padding-left: 20px;">
+                        <li>프로필 관리</li>
+                        <li>설정 변경</li>
+                        <li>프리미엄 기능</li>
+                        <li>데이터 내보내기</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>📊 기능 계획</h2>
+                <p>향후 추가할 수 있는 기능들입니다.</p>
+                <div class="protected-content">
+                    <ul style="padding-left: 20px; line-height: 1.8;">
+                        <li>사용자 대시보드</li>
+                        <li>결제 시스템 연동</li>
+                        <li>구독 관리</li>
+                        <li>사용량 통계</li>
+                        <li>API 키 관리</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <a href="index.html" class="back-link">← 메인으로 돌아가기</a>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
+    
+    <!-- 인증 스크립트 -->
+    <script src="js/firebase-config.js"></script>
+    <script src="js/auth-service.js"></script>
+    
+    <script>
+        // 페이지 로드 시 인증 확인
+        document.addEventListener('DOMContentLoaded', async () => {
+            const loading = document.getElementById('loading');
+            const dashboard = document.getElementById('dashboard');
+
+            // 인증 상태 확인
+            authService.onAuthStateChanged(async (user) => {
+                if (user) {
+                    // 로그인된 경우 대시보드 표시
+                    loading.style.display = 'none';
+                    dashboard.style.display = 'block';
+                    
+                    // 사용자 정보 표시
+                    const userData = authService.getCurrentUser();
+                    document.getElementById('user-name').textContent = userData.displayName;
+                    document.getElementById('user-email').textContent = userData.email;
+                    document.getElementById('user-uid').textContent = userData.uid;
+                    
+                    if (userData.createdAt) {
+                        const date = new Date(userData.createdAt);
+                        document.getElementById('user-created').textContent = 
+                            date.toLocaleDateString('ko-KR');
+                    }
+
+                    // 로그아웃 버튼
+                    document.getElementById('logout-btn').addEventListener('click', async () => {
+                        await authService.signOut();
+                        window.location.href = 'index.html';
+                    });
+                } else {
+                    // 로그인되지 않은 경우 메인 페이지로 리다이렉트
+                    alert('로그인이 필요합니다.');
+                    window.location.href = 'index.html';
+                }
+            });
+        });
+    </script>
+</body>
+</html>
+
