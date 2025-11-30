@@ -1,0 +1,7 @@
+﻿commit 2a551adfe73763b7e037c0d902185a8a2d96b8f2
+Author: hmlee <goalsgo7574@gmail.com>
+Date:   Fri Nov 28 14:39:26 2025 +0900
+
+    Fix: SSH ???ㅼ젙 ?④퀎 媛쒖꽑
+
+.github/workflows/deploy.yml
