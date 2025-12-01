@@ -144,3 +144,5 @@ Git 설치가 완료되면:
 **다운로드 링크**: https://git-scm.com/download/win
 
 설치 후 이 가이드를 다시 참고하여 진행하세요!
+
+
