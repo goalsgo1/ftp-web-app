@@ -63,7 +63,7 @@ export default function SubscriptionManagement() {
         <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
           구독 관리
         </h2>
-        <p className="text-gray-600 dark:text-gray-400">
+        <p className="text-base text-gray-600 dark:text-gray-400">
           현재 구독 중인 기능들을 관리하세요
         </p>
       </div>

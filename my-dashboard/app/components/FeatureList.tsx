@@ -78,7 +78,7 @@ export default function FeatureList() {
         <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
           웹 기능 목록
         </h2>
-        <p className="text-gray-600 dark:text-gray-400">
+        <p className="text-base text-gray-600 dark:text-gray-400">
           사용 가능한 웹 기능들을 탐색하고 구독하세요
         </p>
       </div>

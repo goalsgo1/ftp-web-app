@@ -1,23 +1,90 @@
 'use client';
 
 import { useState } from 'react';
-import { FiChevronLeft, FiChevronRight, FiChevronDown, FiBell, FiSettings, FiClock, FiExternalLink } from 'react-icons/fi';
+import { FiChevronLeft, FiChevronRight, FiChevronDown, FiBell, FiSettings, FiClock, FiExternalLink, FiX } from 'react-icons/fi';
 
 interface Slide {
   id: number;
   title: string;
+  description: string;
   component: React.ReactNode;
 }
 
-export default function PhonePreview() {
+interface PhonePreviewProps {
+  onClose?: () => void;
+}
+
+export default function PhonePreview({ onClose }: PhonePreviewProps) {
   const [currentSlide, setCurrentSlide] = useState(0);
 
-  // 슬라이드 1: 앱 대시보드 화면
+  // 슬라이드 0: 앱 로그인 화면
+  const Slide0 = () => (
+    <div className="bg-gradient-to-br from-blue-500 to-blue-600 h-full flex flex-col items-center justify-center p-6">
+      <div className="w-full max-w-xs">
+        {/* 로고 */}
+        <div className="text-center mb-8">
+          <div className="w-20 h-20 bg-white rounded-2xl mx-auto mb-4 flex items-center justify-center shadow-lg">
+            <span className="text-3xl">📱</span>
+          </div>
+          <h1 className="text-3xl font-bold text-white mb-2">PushHub</h1>
+          <p className="text-blue-100 text-sm">푸시알림 통합 관리</p>
+        </div>
+
+        {/* 로그인 폼 */}
+        <div className="bg-white rounded-2xl p-6 shadow-xl">
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">이메일</label>
+              <input
+                type="email"
+                placeholder="user@example.com"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                defaultValue="user@example.com"
+                readOnly
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">비밀번호</label>
+              <input
+                type="password"
+                placeholder="••••••••"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                defaultValue="••••••••"
+                readOnly
+              />
+            </div>
+            <button className="w-full py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow-md">
+              로그인
+            </button>
+            <div className="flex items-center gap-2 justify-center pt-2">
+              <div className="w-8 h-8 border-2 border-gray-300 rounded flex items-center justify-center">
+                <span className="text-xs">👆</span>
+              </div>
+              <span className="text-xs text-gray-500">지문 인증</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 하단 안내 */}
+        <p className="text-center text-blue-100 text-xs mt-6">
+          앱에 로그인하면 웹에서도<br />간편하게 로그인할 수 있습니다
+        </p>
+      </div>
+    </div>
+  );
+
+  // 슬라이드 1: 앱 대시보드 화면 (로그인 후)
   const Slide1 = () => (
     <div className="bg-gray-50 h-full flex flex-col">
       {/* 헤더 */}
-      <div className="bg-white px-4 py-3 border-b border-gray-200">
+      <div className="bg-white px-4 py-3 border-b border-gray-200 flex items-center justify-between">
         <h2 className="text-lg font-bold text-gray-900">PushHub</h2>
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
+            <span className="text-xs">👤</span>
+          </div>
+          <span className="text-xs text-gray-600">로그인됨</span>
+        </div>
       </div>
       
       {/* 기능 목록 */}
@@ -209,8 +276,94 @@ export default function PhonePreview() {
     </div>
   );
 
-  // 슬라이드 4: 웹으로 이동
+  // 슬라이드 4: 웹에서 로그인 버튼 클릭 → 앱 연동
   const Slide4 = () => (
+    <div className="bg-gray-50 h-full flex flex-col overflow-hidden">
+      {/* 웹 화면 (상단) */}
+      <div className="bg-white border-b-2 border-blue-500 p-3 flex-shrink-0">
+        <div className="bg-gray-100 rounded-lg p-2 mb-2">
+          <div className="flex items-center gap-2">
+            <div className="flex gap-1">
+              <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+              <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+            </div>
+            <div className="flex-1 bg-white rounded px-2 py-1 text-xs text-gray-600">
+              pushhub.example.com
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-lg">⚠️</span>
+            <p className="text-xs font-medium text-yellow-900">세션이 만료되었습니다</p>
+          </div>
+          <button className="w-full py-2 bg-blue-600 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-2">
+            <span>📱</span>
+            앱으로 로그인하기
+          </button>
+        </div>
+      </div>
+
+      {/* 화살표 애니메이션 */}
+      <div className="flex justify-center py-3 flex-shrink-0">
+        <div className="animate-bounce">
+          <FiChevronDown className="w-6 h-6 text-blue-600" />
+        </div>
+      </div>
+
+      {/* 앱 화면 (하단) */}
+      <div className="flex-1 bg-gradient-to-br from-blue-500 to-blue-600 p-4 overflow-y-auto min-h-0">
+        <div className="bg-white rounded-xl p-4 shadow-lg">
+          <div className="text-center mb-4">
+            <div className="w-16 h-16 bg-blue-100 rounded-full mx-auto mb-3 flex items-center justify-center">
+              <span className="text-2xl">✅</span>
+            </div>
+            <h3 className="font-bold text-gray-900 mb-1">로그인 확인</h3>
+            <p className="text-xs text-gray-600">앱에 이미 로그인되어 있습니다</p>
+          </div>
+
+          <div className="space-y-2 mb-4">
+            <div className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
+              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                <span className="text-sm">👤</span>
+              </div>
+              <div className="flex-1">
+                <p className="text-xs font-medium text-gray-900">user@example.com</p>
+                <p className="text-xs text-gray-500">로그인 중</p>
+              </div>
+              <span className="text-xs text-green-600">✓</span>
+            </div>
+          </div>
+
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
+            <p className="text-xs text-blue-900 font-medium mb-1">웹으로 인증 토큰 전송 중...</p>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-1 bg-blue-200 rounded-full overflow-hidden">
+                <div className="h-full bg-blue-600 rounded-full animate-pulse" style={{ width: '70%' }}></div>
+              </div>
+              <span className="text-xs text-blue-600">70%</span>
+            </div>
+          </div>
+
+          <button className="w-full py-2 bg-blue-600 text-white rounded-lg text-xs font-medium">
+            웹으로 돌아가기
+          </button>
+        </div>
+
+        <div className="mt-3 text-center">
+          <p className="text-xs text-blue-100">
+            앱과 웹이 연결되어 있어<br />
+            한 번의 로그인으로 모든 기능을 사용할 수 있습니다
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+
+  // 슬라이드 5: 웹으로 이동
+  const Slide5 = () => (
     <div className="bg-gray-50 h-full flex flex-col overflow-hidden">
       {/* 푸시알림 클릭 시뮬레이션 */}
       <div className="p-3 flex-shrink-0">
@@ -306,10 +459,42 @@ export default function PhonePreview() {
   );
 
   const slides: Slide[] = [
-    { id: 1, title: '앱 대시보드', component: <Slide1 /> },
-    { id: 2, title: '푸시알림 수신', component: <Slide2 /> },
-    { id: 3, title: '시간 설정', component: <Slide3 /> },
-    { id: 4, title: '웹으로 이동', component: <Slide4 /> },
+    { 
+      id: 0, 
+      title: '앱 로그인', 
+      description: 'PushHub 앱에 로그인하여 시작합니다. 이메일/비밀번호 또는 지문 인증을 사용할 수 있습니다.',
+      component: <Slide0 /> 
+    },
+    { 
+      id: 1, 
+      title: '앱 대시보드', 
+      description: '로그인 후 구독 중인 웹 기능들을 확인하고 관리할 수 있는 메인 화면입니다.',
+      component: <Slide1 /> 
+    },
+    { 
+      id: 2, 
+      title: '푸시알림 수신', 
+      description: '구독한 웹 기능에서 발생한 알림을 실시간으로 받아볼 수 있습니다. 알림을 탭하면 상세 내용을 확인할 수 있습니다.',
+      component: <Slide2 /> 
+    },
+    { 
+      id: 3, 
+      title: '시간 설정', 
+      description: '기능별로 알림을 켜고 끌 수 있으며, 특정 시간대에만 알림을 받거나 차단하는 규칙을 설정할 수 있습니다.',
+      component: <Slide3 /> 
+    },
+    { 
+      id: 4, 
+      title: '앱-웹 인증 연동', 
+      description: '웹에서 세션이 만료되어도 앱에 로그인되어 있다면, 앱의 인증 상태를 활용하여 웹에서 자동으로 로그인할 수 있습니다.',
+      component: <Slide4 /> 
+    },
+    { 
+      id: 5, 
+      title: '웹으로 이동', 
+      description: '푸시알림을 탭하면 해당 기능의 웹 페이지로 자동 이동하여 상세 정보를 확인할 수 있습니다.',
+      component: <Slide5 /> 
+    },
   ];
 
   const nextSlide = () => {
@@ -325,7 +510,22 @@ export default function PhonePreview() {
   };
 
   return (
-    <div className="w-full max-w-sm mx-auto lg:mx-0 lg:sticky lg:top-8">
+    <div className="w-full max-w-sm mx-auto lg:mx-0 lg:sticky lg:top-8 relative group">
+      {/* 닫기 버튼 */}
+      {onClose && (
+        <button
+          onClick={onClose}
+          className="hidden lg:flex absolute -right-16 top-4 z-30
+                   bg-gray-800 hover:bg-gray-700 text-white 
+                   p-3 rounded-lg shadow-xl transition-all
+                   items-center justify-center
+                   hover:scale-110 border-2 border-white"
+          aria-label="프리뷰 닫기"
+          title="프리뷰 숨기기"
+        >
+          <FiChevronRight className="w-6 h-6" />
+        </button>
+      )}
       <div className="bg-gray-900 rounded-[2.5rem] p-2 shadow-2xl">
         {/* 스마트폰 프레임 */}
         <div className="bg-white rounded-[2rem] overflow-hidden">
@@ -349,7 +549,10 @@ export default function PhonePreview() {
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
             {slides[currentSlide].title}
           </h3>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 px-4 leading-relaxed">
+            {slides[currentSlide].description}
+          </p>
+          <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">
             {currentSlide + 1} / {slides.length}
           </p>
         </div>

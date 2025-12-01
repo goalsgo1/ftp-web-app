@@ -88,7 +88,7 @@ export default function NotificationSettings() {
         <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
           알림 설정
         </h2>
-        <p className="text-gray-600 dark:text-gray-400">
+        <p className="text-base text-gray-600 dark:text-gray-400">
           기능별 알림을 세밀하게 제어하세요
         </p>
       </div>

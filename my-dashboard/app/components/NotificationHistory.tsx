@@ -78,7 +78,7 @@ export default function NotificationHistory() {
         <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
           알림 히스토리
         </h2>
-        <p className="text-gray-600 dark:text-gray-400">
+        <p className="text-base text-gray-600 dark:text-gray-400">
           받은 알림들을 확인하고 관리하세요
         </p>
       </div>
