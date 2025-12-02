@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { FiMail, FiLock, FiLogIn, FiSmartphone, FiCheckCircle, FiArrowRight } from 'react-icons/fi';
+import { FiMail, FiLock, FiLogIn, FiSmartphone, FiCheckCircle, FiArrowRight, FiUserPlus, FiHome } from 'react-icons/fi';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -67,9 +67,17 @@ export default function LoginPage() {
           <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
             PushHub
           </h1>
-          <p className="text-gray-600 dark:text-gray-400">
+          <p className="text-gray-600 dark:text-gray-400 mb-4">
             푸시알림 통합 관리 플랫폼
           </p>
+          <Button
+            variant="secondary"
+            onClick={() => router.push('/')}
+            icon={<FiHome size={16} />}
+            size="sm"
+          >
+            홈으로 이동
+          </Button>
         </div>
 
         {/* 로그인 카드 */}
@@ -151,17 +159,21 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          {/* 회원가입 링크 */}
-          <div className="mt-6 text-center">
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              계정이 없으신가요?{' '}
-              <Link
-                href="/signup"
-                className="text-blue-600 dark:text-blue-400 font-medium hover:underline"
-              >
-                회원가입
-              </Link>
-            </p>
+          {/* 회원가입 버튼 */}
+          <div className="mt-6">
+            <Button
+              variant="secondary"
+              fullWidth
+              onClick={() => router.push('/signup')}
+              icon={<FiUserPlus size={18} />}
+            >
+              회원가입
+            </Button>
+            <div className="mt-3 text-center">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                계정이 없으신가요? 위 버튼을 클릭하세요
+              </p>
+            </div>
           </div>
         </Card>
 

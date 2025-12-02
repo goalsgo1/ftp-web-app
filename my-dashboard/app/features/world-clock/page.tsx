@@ -10,6 +10,9 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { Select } from '@/components/ui/Select';
 import { Input } from '@/components/ui/Input';
 import { ToastContainer, type Toast } from '@/components/ui/Toast';
+import { StatCard } from '@/components/ui/StatCard';
+import { DashboardLayout } from '@/components/layout';
+import { PageLayout } from '@/components/layout';
 import { onAuthChange, getCurrentUser } from '@/lib/firebase';
 import { getUserWorldClockSettings, saveUserWorldClockSettings, subscribeUserWorldClockSettings, getCreatorSettings, type WorldClockSettings } from '@/lib/firebase/worldClock';
 import { getFeatureById } from '@/lib/firebase/features';
@@ -951,44 +954,14 @@ export default function WorldClockPage() {
     };
   }, []);
 
-  if (isLoading || hasAccess === null) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-gray-500 dark:text-gray-400">로딩 중...</p>
-      </div>
-    );
-  }
-
-  // 접근 권한이 없는 경우
-  if (hasAccess === false) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Card className="p-8 max-w-md">
-          <div className="text-center">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
-              접근 권한 없음
-            </h2>
-            <p className="text-gray-600 dark:text-gray-400 mb-6">
-              {accessError || '이 기능에 접근할 수 없습니다.'}
-            </p>
-            <Button
-              variant="primary"
-              onClick={() => window.location.href = '/'}
-            >
-              대시보드로 돌아가기
-            </Button>
-          </div>
-        </Card>
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="세계시간"
-        description="전 세계 주요 도시의 현재 시간을 실시간으로 확인하세요"
-      />
+    <DashboardLayout>
+      <PageLayout>
+        <div className="space-y-6">
+          <PageHeader
+            title="세계시간"
+            description="전 세계 주요 도시의 현재 시간을 실시간으로 확인하세요"
+          />
 
       {/* 시간대 선택 */}
       <Card>
@@ -1112,39 +1085,25 @@ export default function WorldClockPage() {
 
           {/* 알림 통계 */}
           <div className="grid grid-cols-3 gap-4 mb-4">
-            <Card className="p-4 bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border-blue-200 dark:border-blue-800">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">전체 알림</p>
-                  <p className="text-2xl font-bold text-blue-700 dark:text-blue-300">
-                    {notificationAlerts.length}
-                  </p>
-                </div>
-                <FiBell className="w-8 h-8 text-blue-500 dark:text-blue-400 opacity-50" />
-              </div>
-            </Card>
-            <Card className="p-4 bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border-green-200 dark:border-green-800">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">활성 알림</p>
-                  <p className="text-2xl font-bold text-green-700 dark:text-green-300">
-                    {notificationAlerts.filter(a => a.active !== false).length}
-                  </p>
-                </div>
-                <FiCheckCircle className="w-8 h-8 text-green-500 dark:text-green-400 opacity-50" />
-              </div>
-            </Card>
-            <Card className="p-4 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800/20 dark:to-gray-700/20 border-gray-200 dark:border-gray-700">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">비활성 알림</p>
-                  <p className="text-2xl font-bold text-gray-700 dark:text-gray-300">
-                    {notificationAlerts.filter(a => a.active === false).length}
-                  </p>
-                </div>
-                <FiClock className="w-8 h-8 text-gray-500 dark:text-gray-400 opacity-50" />
-              </div>
-            </Card>
+            <StatCard
+              label="전체 알림"
+              value={notificationAlerts.length}
+              icon={<FiBell className="w-8 h-8 text-blue-500 dark:text-blue-400 opacity-50" />}
+              className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border-blue-200 dark:border-blue-800"
+            />
+            <StatCard
+              label="활성 알림"
+              value={notificationAlerts.filter(a => a.active !== false).length}
+              variant="success"
+              icon={<FiCheckCircle className="w-8 h-8 text-green-500 dark:text-green-400 opacity-50" />}
+              className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border-green-200 dark:border-green-800"
+            />
+            <StatCard
+              label="비활성 알림"
+              value={notificationAlerts.filter(a => a.active === false).length}
+              icon={<FiClock className="w-8 h-8 text-gray-500 dark:text-gray-400 opacity-50" />}
+              className="bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800/20 dark:to-gray-700/20 border-gray-200 dark:border-gray-700"
+            />
           </div>
 
           {showNotificationSettings && (
@@ -1381,7 +1340,9 @@ export default function WorldClockPage() {
 
       {/* 토스트 알림 컨테이너 */}
       <ToastContainer toasts={toasts} onClose={handleCloseToast} />
-    </div>
+        </div>
+      </PageLayout>
+    </DashboardLayout>
   );
 }
 

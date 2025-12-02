@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { 
   FiHome, 
   FiBell, 
@@ -24,11 +24,15 @@ interface DashboardLayoutProps {
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState('features');
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // 현재 경로가 대시보드 메인 페이지인지 확인
+  const isDashboardPage = pathname === '/';
 
   // 인증 상태 확인
   useEffect(() => {
@@ -88,9 +92,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               >
                 {sidebarOpen ? <FiX size={24} /> : <FiMenu size={24} />}
               </button>
-              <h1 className="ml-4 lg:ml-0 text-2xl font-bold text-gray-900 dark:text-white">
+              <button
+                onClick={() => router.push('/')}
+                className="ml-4 lg:ml-0 text-2xl font-bold text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer"
+              >
                 PushHub
-              </h1>
+              </button>
             </div>
             <div className="flex items-center gap-4">
               {isLoading ? (
@@ -156,21 +163,31 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           <nav className={`${sidebarCollapsed ? 'p-2' : 'p-4'} space-y-2`}>
             {menuItems.map((item) => {
               const Icon = item.icon;
+              const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+                e.preventDefault();
+                if (isDashboardPage) {
+                  // 대시보드 메인 페이지에서는 해시 변경으로 탭 전환
+                  setActiveTab(item.id);
+                  window.location.hash = `#${item.id}`;
+                } else {
+                  // 다른 페이지에서는 대시보드로 이동하고 해시 설정
+                  router.push(`/#${item.id}`);
+                }
+                setSidebarOpen(false);
+              };
+              
               return (
                 <a
                   key={item.id}
-                  href={`#${item.id}`}
-                  onClick={() => {
-                    setActiveTab(item.id);
-                    setSidebarOpen(false);
-                  }}
+                  href={isDashboardPage ? `#${item.id}` : `/#${item.id}`}
+                  onClick={handleClick}
                   className={`
                     w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'} 
                     ${sidebarCollapsed ? 'px-0 py-3' : 'px-4 py-3'} 
                     rounded-lg
                     transition-colors duration-150
                     ${
-                      activeTab === item.id
+                      activeTab === item.id && isDashboardPage
                         ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
                         : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                     }
