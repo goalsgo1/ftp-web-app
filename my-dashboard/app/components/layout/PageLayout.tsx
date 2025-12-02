@@ -21,12 +21,12 @@ export const PageLayout = ({
 
   return (
     <div className="relative">
-      <div className={`grid grid-cols-1 lg:grid-cols-3 gap-8 transition-all duration-300`}>
-        <div className={`${isPreviewVisible ? 'lg:col-span-2' : 'lg:col-span-3'}`}>
+      <div className={`flex gap-8 transition-all duration-300`}>
+        <div className={`flex-1 min-w-0 ${isPreviewVisible ? '' : 'w-full'}`}>
           {children}
         </div>
         {isPreviewVisible && (
-          <div className="hidden lg:block lg:col-span-1 relative">
+          <div className="hidden xl:block flex-shrink-0 relative">
             <PhonePreview onClose={() => setIsPreviewVisible(false)} />
           </div>
         )}
@@ -34,9 +34,9 @@ export const PageLayout = ({
       {!isPreviewVisible && (
         <button
           onClick={() => setIsPreviewVisible(true)}
-          className="hidden lg:flex fixed right-0 top-1/2 -translate-y-1/2 z-[100] 
+          className="hidden xl:flex fixed right-0 top-28 z-[100] 
                    bg-blue-600 hover:bg-blue-700 text-white 
-                   p-4 rounded-l-lg shadow-2xl
+                   px-0.5 py-4 rounded-l-lg shadow-2xl
                    transition-all hover:scale-110 hover:right-2
                    items-center justify-center
                    border-2 border-blue-400"

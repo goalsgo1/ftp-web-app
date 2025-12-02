@@ -11,18 +11,23 @@ import { Select } from '@/components/ui/Select';
 import { Input } from '@/components/ui/Input';
 import { ToastContainer, type Toast } from '@/components/ui/Toast';
 import { onAuthChange, getCurrentUser } from '@/lib/firebase';
-import { getUserWorldClockSettings, saveUserWorldClockSettings, subscribeUserWorldClockSettings } from '@/lib/firebase/worldClock';
+import { getUserWorldClockSettings, saveUserWorldClockSettings, subscribeUserWorldClockSettings, getCreatorSettings, type WorldClockSettings } from '@/lib/firebase/worldClock';
+import { getFeatureById } from '@/lib/firebase/features';
 import { TIMEZONES, getTimezoneInfo, getCurrentTime, formatTime, formatDate, type TimezoneInfo } from '@/lib/utils/timezones';
 import { requestNotificationPermission, showBrowserNotification, checkNotificationTime } from '@/lib/utils/notifications';
 import type { User } from 'firebase/auth';
 
 export default function WorldClockPage() {
   const searchParams = useSearchParams();
-  const featureId = searchParams.get('id') || 'world-clock'; // 기능 ID (기본값)
+  // featureId 파라미터를 우선 사용, 없으면 id 파라미터 사용 (기존 호환성 유지)
+  const featureId = searchParams.get('featureId') || searchParams.get('id') || 'world-clock';
   
   const [user, setUser] = useState<User | null>(null);
-  const [settings, setSettings] = useState<any>(null);
+  const [settings, setSettings] = useState<WorldClockSettings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasAccess, setHasAccess] = useState<boolean | null>(null); // 접근 권한 (null: 체크 중, true: 접근 가능, false: 접근 불가)
+  const [accessError, setAccessError] = useState<string | null>(null);
+  const [feature, setFeature] = useState<{ createdBy?: string } | null>(null); // 기능 정보 (생성자 확인용)
   const [selectedTimezones, setSelectedTimezones] = useState<string[]>(['Asia/Seoul']);
   const [currentTimes, setCurrentTimes] = useState<Record<string, Date>>({});
   const [showNotificationSettings, setShowNotificationSettings] = useState(false);
@@ -49,11 +54,83 @@ export default function WorldClockPage() {
     }
   }, []);
 
+  // 생성자인지 확인하는 함수
+  const isFeatureCreator = (): boolean => {
+    // featureId가 'world-clock'인 경우는 기본 기능이므로 모든 사용자에게 권한 부여
+    if (featureId === 'world-clock') return true;
+    
+    // feature 정보가 없으면 권한 없음
+    if (!feature || !feature.createdBy) return false;
+    
+    // 현재 사용자가 생성자인지 확인
+    if (!user) return false;
+    
+    return feature.createdBy === user.uid;
+  };
+
+  // 접근 권한 체크 (featureId로 feature 정보 확인)
+  useEffect(() => {
+    const checkAccess = async () => {
+      // featureId가 'world-clock'인 경우는 기본 기능이므로 접근 허용
+      if (featureId === 'world-clock') {
+        setHasAccess(true);
+        return;
+      }
+
+      try {
+        const featureData = await getFeatureById(featureId);
+        
+        if (!featureData) {
+          // 기능이 존재하지 않음
+          setHasAccess(false);
+          setAccessError('존재하지 않는 기능입니다.');
+          setIsLoading(false);
+          return;
+        }
+
+        // 기능 정보 저장 (생성자 확인용)
+        setFeature(featureData);
+
+        // 공개 기능이면 누구나 접근 가능
+        if (featureData.isPublic) {
+          setHasAccess(true);
+          return;
+        }
+
+        // 비공개 기능인 경우, 현재 사용자가 생성자인지 확인
+        const currentUser = getCurrentUser();
+        if (!currentUser) {
+          setHasAccess(false);
+          setAccessError('비공개 기능입니다. 로그인이 필요합니다.');
+          setIsLoading(false);
+          return;
+        }
+
+        if (featureData.createdBy === currentUser.uid) {
+          // 생성자이면 접근 가능
+          setHasAccess(true);
+        } else {
+          // 생성자가 아니면 접근 불가
+          setHasAccess(false);
+          setAccessError('비공개 기능입니다. 접근 권한이 없습니다.');
+          setIsLoading(false);
+        }
+      } catch (error) {
+        console.error('접근 권한 확인 실패:', error);
+        setHasAccess(false);
+        setAccessError('접근 권한을 확인하는 중 오류가 발생했습니다.');
+        setIsLoading(false);
+      }
+    };
+
+    checkAccess();
+  }, [featureId]);
+
   // 로그인 상태 확인 및 실시간 설정 감지
   useEffect(() => {
     let settingsUnsubscribe: (() => void) | null = null;
 
-    const authUnsubscribe = onAuthChange((currentUser) => {
+    const authUnsubscribe = onAuthChange(async (currentUser) => {
       setUser(currentUser);
       
       // 이전 실시간 리스너 정리
@@ -62,17 +139,63 @@ export default function WorldClockPage() {
         settingsUnsubscribe = null;
       }
       
-      if (currentUser) {
-        // 초기 설정 로드
-        loadUserSettings(currentUser.uid);
+      if (hasAccess === true) {
+        if (currentUser) {
+          // 로그인한 사용자: 본인 설정 로드
+          loadUserSettings(currentUser.uid);
+        } else if (feature && feature.createdBy) {
+          // 로그인하지 않은 사용자: 공개 기능이면 생성자 설정 로드
+          try {
+            setIsLoading(true);
+            const creatorSettings = await getCreatorSettings(featureId, feature.createdBy);
+            
+            if (creatorSettings) {
+              const timezones = creatorSettings.selectedTimezones || ['Asia/Seoul'];
+              const alerts = (creatorSettings.notifications?.alerts || []).map(alert => ({
+                ...alert,
+                active: alert.active !== undefined ? alert.active : true,
+                isModified: false,
+              }));
+              
+              setSelectedTimezones(timezones);
+              setNotificationAlerts(alerts);
+              selectedTimezonesRef.current = timezones;
+              notificationAlertsRef.current = alerts;
+            } else {
+              // 기본 설정
+              const defaultTimezones = ['Asia/Seoul'];
+              const defaultAlerts: Array<{
+                timezone: string;
+                time: string;
+                label?: string;
+                active?: boolean;
+              }> = [];
+              
+              setSelectedTimezones(defaultTimezones);
+              setNotificationAlerts(defaultAlerts);
+              selectedTimezonesRef.current = defaultTimezones;
+              notificationAlertsRef.current = defaultAlerts;
+            }
+          } catch (error) {
+            console.error('생성자 설정 로드 실패:', error);
+            // 기본 설정
+            const defaultTimezones = ['Asia/Seoul'];
+            setSelectedTimezones(defaultTimezones);
+            selectedTimezonesRef.current = defaultTimezones;
+          } finally {
+            setIsLoading(false);
+          }
+        }
         
-        // 실시간 설정 감지 (다른 탭/브라우저에서 변경 시 자동 업데이트)
-        let lastSettingsHash = ''; // 마지막 설정의 해시값 (중복 업데이트 방지)
-        
-        settingsUnsubscribe = subscribeUserWorldClockSettings(
-          currentUser.uid,
-          featureId,
-          (settings) => {
+        if (currentUser) {
+          // 로그인한 사용자만 실시간 업데이트 구독
+          // 실시간 설정 감지 (다른 탭/브라우저에서 변경 시 자동 업데이트)
+          let lastSettingsHash = ''; // 마지막 설정의 해시값 (중복 업데이트 방지)
+          
+          settingsUnsubscribe = subscribeUserWorldClockSettings(
+            currentUser.uid,
+            featureId,
+            (settings) => {
             // 저장 중이면 무시 (로컬 변경)
             if (isSavingRef.current) {
               return;
@@ -117,7 +240,7 @@ export default function WorldClockPage() {
                 lastSettingsHash = settingsHash;
                 
                 // 다른 탭에서 변경된 경우 토스트 알림
-                setToasts(prev => {
+                setToasts((prev: Toast[]) => {
                   // 중복 방지: 이미 같은 메시지가 있으면 추가하지 않음
                   const hasUpdateToast = prev.some(t => t.message.includes('다른 탭에서'));
                   if (!hasUpdateToast) {
@@ -152,8 +275,8 @@ export default function WorldClockPage() {
             }
             setIsLoading(false);
           }
-        );
-
+          );
+        }
       } else {
         setIsLoading(false);
       }
@@ -165,7 +288,7 @@ export default function WorldClockPage() {
         settingsUnsubscribe();
       }
     };
-  }, [featureId]);
+  }, [featureId, hasAccess]);
 
   // 알림 시간 체크
   useEffect(() => {
@@ -288,6 +411,17 @@ export default function WorldClockPage() {
 
   // 시간대 추가 (즉시 저장하여 다른 탭에 반영)
   const handleAddTimezone = async (timezone: string) => {
+    // 생성자 권한 체크
+    if (!isFeatureCreator()) {
+      setToasts(prev => [...prev, {
+        id: Date.now().toString(),
+        message: '시간대 추가 권한이 없습니다. 생성자만 시간대를 추가할 수 있습니다.',
+        type: 'error',
+        duration: 3000,
+      }]);
+      return;
+    }
+
     if (!user) {
       // 로그인하지 않은 경우 로컬 상태만 업데이트
       if (!selectedTimezones.includes(timezone)) {
@@ -347,6 +481,17 @@ export default function WorldClockPage() {
 
   // 시간대 제거 (즉시 저장하여 다른 탭에 반영)
   const handleRemoveTimezone = async (timezone: string) => {
+    // 생성자 권한 체크
+    if (!isFeatureCreator()) {
+      setToasts(prev => [...prev, {
+        id: Date.now().toString(),
+        message: '시간대 삭제 권한이 없습니다. 생성자만 시간대를 삭제할 수 있습니다.',
+        type: 'error',
+        duration: 3000,
+      }]);
+      return;
+    }
+
     if (!user) {
       // 로그인하지 않은 경우 로컬 상태만 업데이트
       const updatedTimezones = selectedTimezones.filter(tz => tz !== timezone);
@@ -409,6 +554,17 @@ export default function WorldClockPage() {
 
   // 알림 추가
   const handleAddNotification = () => {
+    // 생성자 권한 체크
+    if (!isFeatureCreator()) {
+      setToasts(prev => [...prev, {
+        id: Date.now().toString(),
+        message: '알림 추가 권한이 없습니다. 생성자만 알림을 추가할 수 있습니다.',
+        type: 'error',
+        duration: 3000,
+      }]);
+      return;
+    }
+
     if (selectedTimezones.length === 0) return;
     
     const updated = [
@@ -427,6 +583,17 @@ export default function WorldClockPage() {
 
   // 알림 제거 (즉시 저장하여 다른 탭에 반영)
   const handleRemoveNotification = async (index: number) => {
+    // 생성자 권한 체크
+    if (!isFeatureCreator()) {
+      setToasts(prev => [...prev, {
+        id: Date.now().toString(),
+        message: '알림 삭제 권한이 없습니다. 생성자만 알림을 삭제할 수 있습니다.',
+        type: 'error',
+        duration: 3000,
+      }]);
+      return;
+    }
+
     if (!user) {
       // 로그인하지 않은 경우 로컬 상태만 업데이트
       const updated = notificationAlerts.filter((_, i) => i !== index);
@@ -502,10 +669,10 @@ export default function WorldClockPage() {
         });
         
         // 저장 후 설정 업데이트 (실시간 리스너에서 무시하도록)
-        setSettings(prev => ({
+        setSettings((prev: WorldClockSettings | null) => prev ? {
           ...prev,
           updatedAt: new Date(),
-        }));
+        } : null);
         
         if (!skipToast) {
           setToasts(prev => [...prev, {
@@ -531,6 +698,17 @@ export default function WorldClockPage() {
 
   // 알림 업데이트 (수정 시 비활성화하고 Firestore에 저장하여 다른 탭에 반영)
   const handleUpdateNotification = async (index: number, field: string, value: string | boolean) => {
+    // 생성자 권한 체크
+    if (!isFeatureCreator()) {
+      setToasts(prev => [...prev, {
+        id: Date.now().toString(),
+        message: '알림 수정 권한이 없습니다. 생성자만 알림을 수정할 수 있습니다.',
+        type: 'error',
+        duration: 3000,
+      }]);
+      return;
+    }
+
     if (!user) {
       // 로그인하지 않은 경우 로컬 상태만 업데이트
       const updated = [...notificationAlerts];
@@ -609,6 +787,17 @@ export default function WorldClockPage() {
 
   // 특정 알림 임시저장 (비활성화 상태에서도 저장 가능)
   const handleSaveNotification = async (index: number) => {
+    // 생성자 권한 체크
+    if (!isFeatureCreator()) {
+      setToasts(prev => [...prev, {
+        id: Date.now().toString(),
+        message: '알림 저장 권한이 없습니다. 생성자만 알림을 저장할 수 있습니다.',
+        type: 'error',
+        duration: 3000,
+      }]);
+      return;
+    }
+
     if (!user) return;
 
     const alertToSave = notificationAlerts[index];
@@ -661,6 +850,17 @@ export default function WorldClockPage() {
 
   // 알림 활성/비활성 토글 (켜기/끄기 모두 즉시 저장)
   const handleToggleNotification = async (index: number) => {
+    // 생성자 권한 체크
+    if (!isFeatureCreator()) {
+      setToasts(prev => [...prev, {
+        id: Date.now().toString(),
+        message: '알림 토글 권한이 없습니다. 생성자만 알림을 활성/비활성할 수 있습니다.',
+        type: 'error',
+        duration: 3000,
+      }]);
+      return;
+    }
+
     if (!user) return;
 
     const updated = [...notificationAlerts];
@@ -751,10 +951,34 @@ export default function WorldClockPage() {
     };
   }, []);
 
-  if (isLoading) {
+  if (isLoading || hasAccess === null) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <p className="text-gray-500 dark:text-gray-400">로딩 중...</p>
+      </div>
+    );
+  }
+
+  // 접근 권한이 없는 경우
+  if (hasAccess === false) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Card className="p-8 max-w-md">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
+              접근 권한 없음
+            </h2>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">
+              {accessError || '이 기능에 접근할 수 없습니다.'}
+            </p>
+            <Button
+              variant="primary"
+              onClick={() => window.location.href = '/'}
+            >
+              대시보드로 돌아가기
+            </Button>
+          </div>
+        </Card>
       </div>
     );
   }
@@ -781,8 +1005,9 @@ export default function WorldClockPage() {
               }
             }}
             className="w-64"
+            disabled={!isFeatureCreator()}
           >
-            <option value="">시간대 추가...</option>
+            <option value="">{isFeatureCreator() ? '시간대 추가...' : '생성자만 시간대를 추가할 수 있습니다'}</option>
             {TIMEZONES.filter(tz => !selectedTimezones.includes(tz.timezone)).map(tz => (
               <option key={tz.timezone} value={tz.timezone}>
                 {tz.flag} {tz.label}
@@ -849,11 +1074,6 @@ export default function WorldClockPage() {
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
                   알림 설정
                 </h3>
-                {notificationAlerts.length > 0 && (
-                  <span className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-medium rounded-full">
-                    {notificationAlerts.filter(a => a.active !== false).length}/{notificationAlerts.length}개 활성
-                  </span>
-                )}
                 {notificationPermission === 'granted' && (
                   <span className="px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 text-xs font-medium rounded-full flex items-center gap-1">
                     <FiCheckCircle size={12} />
@@ -890,6 +1110,43 @@ export default function WorldClockPage() {
             </div>
           </div>
 
+          {/* 알림 통계 */}
+          <div className="grid grid-cols-3 gap-4 mb-4">
+            <Card className="p-4 bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border-blue-200 dark:border-blue-800">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">전체 알림</p>
+                  <p className="text-2xl font-bold text-blue-700 dark:text-blue-300">
+                    {notificationAlerts.length}
+                  </p>
+                </div>
+                <FiBell className="w-8 h-8 text-blue-500 dark:text-blue-400 opacity-50" />
+              </div>
+            </Card>
+            <Card className="p-4 bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border-green-200 dark:border-green-800">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">활성 알림</p>
+                  <p className="text-2xl font-bold text-green-700 dark:text-green-300">
+                    {notificationAlerts.filter(a => a.active !== false).length}
+                  </p>
+                </div>
+                <FiCheckCircle className="w-8 h-8 text-green-500 dark:text-green-400 opacity-50" />
+              </div>
+            </Card>
+            <Card className="p-4 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800/20 dark:to-gray-700/20 border-gray-200 dark:border-gray-700">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">비활성 알림</p>
+                  <p className="text-2xl font-bold text-gray-700 dark:text-gray-300">
+                    {notificationAlerts.filter(a => a.active === false).length}
+                  </p>
+                </div>
+                <FiClock className="w-8 h-8 text-gray-500 dark:text-gray-400 opacity-50" />
+              </div>
+            </Card>
+          </div>
+
           {showNotificationSettings && (
             <div className="space-y-4">
               {notificationAlerts.map((alert, index) => {
@@ -923,6 +1180,7 @@ export default function WorldClockPage() {
                             checked={isActive}
                             onChange={() => handleToggleNotification(index)}
                             size="sm"
+                            disabled={!isFeatureCreator()}
                           />
                         </div>
                         
@@ -933,6 +1191,7 @@ export default function WorldClockPage() {
                           <Select
                             value={alert.timezone}
                             onChange={(e) => handleUpdateNotification(index, 'timezone', e.target.value)}
+                            disabled={!isFeatureCreator()}
                           >
                             {selectedTimezones.map(tz => {
                               const tzInfo = getTimezoneInfo(tz);
@@ -954,6 +1213,7 @@ export default function WorldClockPage() {
                               value={alert.time}
                               onChange={(e) => handleUpdateNotification(index, 'time', e.target.value)}
                               className="flex-1"
+                              disabled={!isFeatureCreator()}
                             />
                             <Button
                               variant="secondary"
@@ -998,6 +1258,7 @@ export default function WorldClockPage() {
                               }}
                               icon={<FiRefreshCw size={16} />}
                               title="실시간 시간 체크"
+                              disabled={!isFeatureCreator()}
                             >
                               체크
                             </Button>
@@ -1027,6 +1288,7 @@ export default function WorldClockPage() {
                               }}
                               icon={<FiClock size={16} />}
                               title="현재 시간으로 설정"
+                              disabled={!isFeatureCreator()}
                             >
                               현재
                             </Button>
@@ -1044,6 +1306,7 @@ export default function WorldClockPage() {
                             placeholder="예: 미국 업무 시작"
                             value={alert.label || ''}
                             onChange={(e) => handleUpdateNotification(index, 'label', e.target.value)}
+                            disabled={!isFeatureCreator()}
                           />
                         </div>
                         
@@ -1055,19 +1318,22 @@ export default function WorldClockPage() {
                             onClick={() => handleSaveNotification(index)}
                             icon={<FiSave size={16} />}
                             className={`w-full ${alert.isModified ? 'animate-pulse' : ''}`}
+                            disabled={!isFeatureCreator()}
                           >
                             {alert.isModified ? '임시저장 (수정됨)' : '임시저장'}
                           </Button>
                         </div>
                       </div>
                       <div className="flex flex-col gap-2">
-                        <button
-                          onClick={() => handleRemoveNotification(index)}
-                          className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-red-500 dark:text-red-400"
-                          aria-label="알림 제거"
-                        >
-                          <FiTrash2 size={20} />
-                        </button>
+                        {isFeatureCreator() && (
+                          <button
+                            onClick={() => handleRemoveNotification(index)}
+                            className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-red-500 dark:text-red-400"
+                            aria-label="알림 제거"
+                          >
+                            <FiTrash2 size={20} />
+                          </button>
+                        )}
                       </div>
                     </div>
                   </Card>
@@ -1084,7 +1350,7 @@ export default function WorldClockPage() {
                 variant="secondary"
                 onClick={handleAddNotification}
                 icon={<FiPlus size={18} />}
-                disabled={selectedTimezones.length === 0}
+                disabled={selectedTimezones.length === 0 || !isFeatureCreator()}
               >
                 알림 추가
               </Button>

@@ -3,6 +3,7 @@ import {
   addDoc, 
   getDocs, 
   doc, 
+  getDoc,
   updateDoc, 
   deleteDoc,
   query,
@@ -10,6 +11,7 @@ import {
   Timestamp
 } from 'firebase/firestore';
 import { db } from './config';
+import { getCurrentUser } from './auth';
 
 export interface Feature {
   id?: string;
@@ -66,7 +68,26 @@ export const getFeatures = async (): Promise<Feature[]> => {
 // 기능 수정
 export const updateFeature = async (id: string, feature: Partial<Feature>): Promise<void> => {
   try {
+    const currentUser = getCurrentUser();
+    if (!currentUser) {
+      throw new Error('로그인이 필요합니다.');
+    }
+
+    // 기능 정보 가져오기
     const docRef = doc(db, 'features', id);
+    const docSnap = await getDoc(docRef);
+    
+    if (!docSnap.exists()) {
+      throw new Error('기능을 찾을 수 없습니다.');
+    }
+
+    const existingFeature = docSnap.data() as Feature;
+    
+    // 권한 체크: 생성자만 수정 가능
+    if (existingFeature.createdBy && existingFeature.createdBy !== currentUser.uid) {
+      throw new Error('수정 권한이 없습니다. 생성자만 수정할 수 있습니다.');
+    }
+
     await updateDoc(docRef, {
       ...feature,
       updatedAt: Timestamp.now(),
@@ -80,10 +101,51 @@ export const updateFeature = async (id: string, feature: Partial<Feature>): Prom
 // 기능 삭제
 export const deleteFeature = async (id: string): Promise<void> => {
   try {
+    const currentUser = getCurrentUser();
+    if (!currentUser) {
+      throw new Error('로그인이 필요합니다.');
+    }
+
+    // 기능 정보 가져오기
     const docRef = doc(db, 'features', id);
+    const docSnap = await getDoc(docRef);
+    
+    if (!docSnap.exists()) {
+      throw new Error('기능을 찾을 수 없습니다.');
+    }
+
+    const existingFeature = docSnap.data() as Feature;
+    
+    // 권한 체크: 생성자만 삭제 가능
+    if (existingFeature.createdBy && existingFeature.createdBy !== currentUser.uid) {
+      throw new Error('삭제 권한이 없습니다. 생성자만 삭제할 수 있습니다.');
+    }
+
     await deleteDoc(docRef);
   } catch (error) {
     console.error('기능 삭제 실패:', error);
+    throw error;
+  }
+};
+
+// ID로 기능 가져오기
+export const getFeatureById = async (id: string): Promise<Feature | null> => {
+  try {
+    const docRef = doc(db, 'features', id);
+    const docSnap = await getDoc(docRef);
+    
+    if (docSnap.exists()) {
+      return {
+        id: docSnap.id,
+        ...docSnap.data(),
+        createdAt: docSnap.data().createdAt?.toDate(),
+        updatedAt: docSnap.data().updatedAt?.toDate(),
+      } as Feature;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('기능 가져오기 실패:', error);
     throw error;
   }
 };

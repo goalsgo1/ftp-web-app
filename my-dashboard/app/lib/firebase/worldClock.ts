@@ -123,6 +123,29 @@ export const getPublicUserSettings = async (
   }
 };
 
+// 공개 기능의 생성자 설정 가져오기 (읽기 전용)
+export const getCreatorSettings = async (
+  featureId: string,
+  creatorId: string
+): Promise<WorldClockSettings | null> => {
+  try {
+    // 먼저 기능이 공개인지 확인
+    const featureRef = doc(db, 'features', featureId);
+    const featureSnap = await getDoc(featureRef);
+    
+    if (!featureSnap.exists() || !featureSnap.data().isPublic) {
+      return null; // 공개 기능이 아니면 null 반환
+    }
+
+    // 생성자의 설정 가져오기
+    const creatorSettings = await getUserWorldClockSettings(creatorId, featureId);
+    return creatorSettings;
+  } catch (error) {
+    console.error('생성자 설정 가져오기 실패:', error);
+    throw error;
+  }
+};
+
 // 실시간으로 사용자 설정 감지 (다른 탭/브라우저에서 변경 시 자동 업데이트)
 export const subscribeUserWorldClockSettings = (
   userId: string,

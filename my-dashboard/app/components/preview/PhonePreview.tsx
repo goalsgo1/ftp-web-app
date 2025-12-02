@@ -528,14 +528,14 @@ export default function PhonePreview({ onClose }: PhonePreviewProps) {
   }, []);
 
   return (
-    <div className="w-full max-w-sm mx-auto lg:mx-0 lg:sticky lg:top-8 relative group">
+    <div className="w-[384px] mx-auto lg:mx-0 lg:ml-auto lg:sticky lg:top-8 relative group flex-shrink-0 pr-16">
       {/* 닫기 버튼 */}
       {onClose && (
         <button
           onClick={onClose}
-          className="hidden lg:flex absolute -right-16 top-4 z-30
+          className="hidden xl:flex absolute -right-12 top-4 z-30
                    bg-gray-800 hover:bg-gray-700 text-white 
-                   p-3 rounded-lg shadow-xl transition-all
+                   px-1.5 py-3 rounded-lg shadow-xl transition-all
                    items-center justify-center
                    hover:scale-110 border-2 border-white"
           aria-label="프리뷰 닫기"
@@ -544,14 +544,14 @@ export default function PhonePreview({ onClose }: PhonePreviewProps) {
           <FiChevronRight className="w-6 h-6" />
         </button>
       )}
-      <div className="bg-gray-900 rounded-[2.5rem] p-2 shadow-2xl">
+      <div className="bg-gray-900 rounded-[2.5rem] p-2 shadow-2xl w-[384px] flex-shrink-0">
         {/* 스마트폰 프레임 */}
-        <div className="bg-white rounded-[2rem] overflow-hidden">
+        <div className="bg-white rounded-[2rem] overflow-hidden w-full">
           {/* 노치 */}
           <div className="h-6 bg-gray-900 rounded-b-2xl mx-auto w-32"></div>
           
           {/* 화면 */}
-          <div className="bg-white h-[600px] overflow-hidden relative">
+          <div className="bg-white h-[600px] overflow-hidden relative w-full">
             {slides[currentSlide].component}
           </div>
           

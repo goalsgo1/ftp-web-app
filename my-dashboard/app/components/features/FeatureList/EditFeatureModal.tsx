@@ -34,6 +34,7 @@ export default function EditFeatureModal({ isOpen, onClose, onSuccess, feature }
     description: '',
     category: '기타',
     url: '',
+    customUrl: '', // 직접 입력한 URL
     isPublic: true,
     status: 'completed' as 'completed' | 'coming_soon',
   });
@@ -43,11 +44,14 @@ export default function EditFeatureModal({ isOpen, onClose, onSuccess, feature }
   // feature가 변경될 때 폼 데이터 업데이트
   useEffect(() => {
     if (feature) {
+      // 내부 기능 URL인지 확인
+      const isInternalFeature = feature.url?.startsWith('/features/');
       setFormData({
         name: feature.name || '',
         description: feature.description || '',
         category: feature.category || '기타',
-        url: feature.url || '',
+        url: isInternalFeature ? feature.url || '' : '__custom__',
+        customUrl: isInternalFeature ? '' : (feature.url || ''),
         isPublic: feature.isPublic ?? true,
         status: feature.status || 'completed',
       });
@@ -72,19 +76,24 @@ export default function EditFeatureModal({ isOpen, onClose, onSuccess, feature }
       setIsLoading(false);
       return;
     }
-    if (!formData.url.trim()) {
-      setError('웹사이트 URL을 입력해주세요.');
+    // URL 또는 내부 기능 선택 확인
+    const finalUrl = formData.url === '__custom__' ? formData.customUrl : formData.url;
+    
+    if (!finalUrl.trim()) {
+      setError('웹사이트 URL 또는 내부 기능을 선택해주세요.');
       setIsLoading(false);
       return;
     }
     
-    // URL 형식 검사
-    try {
-      new URL(formData.url);
-    } catch {
-      setError('올바른 URL 형식을 입력해주세요. (예: https://example.com)');
-      setIsLoading(false);
-      return;
+    // 외부 URL인 경우 형식 검사
+    if (formData.url === '__custom__') {
+      try {
+        new URL(finalUrl);
+      } catch {
+        setError('올바른 URL 형식을 입력해주세요. (예: https://example.com)');
+        setIsLoading(false);
+        return;
+      }
     }
 
     try {
@@ -92,7 +101,7 @@ export default function EditFeatureModal({ isOpen, onClose, onSuccess, feature }
         name: formData.name.trim(),
         description: formData.description.trim(),
         category: formData.category,
-        url: formData.url.trim(),
+        url: (formData.url === '__custom__' ? formData.customUrl : formData.url).trim(),
         isPublic: formData.isPublic,
         status: formData.status,
       });
@@ -100,7 +109,9 @@ export default function EditFeatureModal({ isOpen, onClose, onSuccess, feature }
       onSuccess();
       onClose();
     } catch (err: any) {
-      setError('기능 수정에 실패했습니다. 다시 시도해주세요.');
+      // 권한 오류인 경우 명확한 메시지 표시
+      const errorMessage = err?.message || '기능 수정에 실패했습니다. 다시 시도해주세요.';
+      setError(errorMessage);
       console.error('기능 수정 오류:', err);
     } finally {
       setIsLoading(false);
@@ -144,16 +155,35 @@ export default function EditFeatureModal({ isOpen, onClose, onSuccess, feature }
             <label htmlFor="edit-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               <FiFileText className="inline w-4 h-4 mr-1" />
               기능 이름 *
+              <span className={`ml-2 text-xs ${
+                formData.name.length >= 90 
+                  ? 'text-red-600 dark:text-red-400 font-semibold' 
+                  : formData.name.length >= 80 
+                  ? 'text-yellow-600 dark:text-yellow-400' 
+                  : 'text-gray-500 dark:text-gray-400'
+              }`}>
+                ({formData.name.length}/100)
+              </span>
             </label>
             <Input
               id="edit-name"
               type="text"
               placeholder="예: 세계시간, 할일 관리"
               value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              onChange={(e) => {
+                if (e.target.value.length <= 100) {
+                  setFormData({ ...formData, name: e.target.value });
+                }
+              }}
+              maxLength={100}
               required
               disabled={isLoading}
             />
+            {formData.name.length >= 90 && (
+              <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                제목이 너무 깁니다. 카드에서 잘릴 수 있습니다.
+              </p>
+            )}
           </div>
 
           {/* 기능 설명 */}
@@ -161,17 +191,36 @@ export default function EditFeatureModal({ isOpen, onClose, onSuccess, feature }
             <label htmlFor="edit-description" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               <FiFileText className="inline w-4 h-4 mr-1" />
               기능 설명 *
+              <span className={`ml-2 text-xs ${
+                formData.description.length >= 450 
+                  ? 'text-red-600 dark:text-red-400 font-semibold' 
+                  : formData.description.length >= 400 
+                  ? 'text-yellow-600 dark:text-yellow-400' 
+                  : 'text-gray-500 dark:text-gray-400'
+              }`}>
+                ({formData.description.length}/500)
+              </span>
             </label>
             <textarea
               id="edit-description"
               rows={4}
               placeholder="이 기능에 대한 상세한 설명을 입력해주세요"
               value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              onChange={(e) => {
+                if (e.target.value.length <= 500) {
+                  setFormData({ ...formData, description: e.target.value });
+                }
+              }}
+              maxLength={500}
               required
               disabled={isLoading}
               className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed resize-none"
             />
+            {formData.description.length >= 450 && (
+              <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                설명이 너무 깁니다. 카드에서 잘릴 수 있습니다.
+              </p>
+            )}
           </div>
 
           {/* 카테고리 */}
@@ -194,23 +243,34 @@ export default function EditFeatureModal({ isOpen, onClose, onSuccess, feature }
             </Select>
           </div>
 
-          {/* 웹사이트 URL */}
+          {/* 웹사이트 URL 또는 내부 기능 선택 */}
           <div>
             <label htmlFor="edit-url" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               <FiLink className="inline w-4 h-4 mr-1" />
-              웹사이트 URL *
+              웹사이트 URL 또는 내부 기능 *
             </label>
-            <Input
+            <Select
               id="edit-url"
-              type="url"
-              placeholder="https://example.com"
               value={formData.url}
               onChange={(e) => setFormData({ ...formData, url: e.target.value })}
               required
               disabled={isLoading}
-            />
+            >
+              <option value="__custom__">직접 입력</option>
+              <option value="/features/world-clock?id=world-clock">세계시간</option>
+            </Select>
+            {formData.url === '__custom__' && (
+              <Input
+                type="url"
+                placeholder="https://example.com"
+                value={formData.customUrl || ''}
+                onChange={(e) => setFormData({ ...formData, customUrl: e.target.value })}
+                className="mt-2"
+                disabled={isLoading}
+              />
+            )}
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              사용자가 이 기능에 접근할 수 있는 웹사이트 주소를 입력해주세요.
+              내부 기능을 선택하거나 외부 웹사이트 URL을 직접 입력할 수 있습니다.
             </p>
           </div>
 

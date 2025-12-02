@@ -33,7 +33,8 @@ export default function AddFeatureModal({ isOpen, onClose, onSuccess }: AddFeatu
     name: '',
     description: '',
     category: '기타',
-    url: '',
+    url: '__custom__', // 기본값을 '직접 입력'으로 설정
+    customUrl: '', // 직접 입력한 URL
     isPublic: true, // 공개/비공개
     status: 'completed' as 'completed' | 'coming_soon', // 완료/준비중
   });
@@ -58,28 +59,35 @@ export default function AddFeatureModal({ isOpen, onClose, onSuccess }: AddFeatu
       setIsLoading(false);
       return;
     }
-    if (!formData.url.trim()) {
-      setError('웹사이트 URL을 입력해주세요.');
+    // URL 또는 내부 기능 선택 확인
+    const finalUrl = formData.url === '__custom__' ? formData.customUrl : formData.url;
+    
+    if (!finalUrl.trim()) {
+      setError('웹사이트 URL 또는 내부 기능을 선택해주세요.');
       setIsLoading(false);
       return;
     }
     
-    // URL 형식 검사
-    try {
-      new URL(formData.url);
-    } catch {
-      setError('올바른 URL 형식을 입력해주세요. (예: https://example.com)');
-      setIsLoading(false);
-      return;
+    // 외부 URL인 경우 형식 검사
+    if (formData.url === '__custom__') {
+      try {
+        new URL(finalUrl);
+      } catch {
+        setError('올바른 URL 형식을 입력해주세요. (예: https://example.com)');
+        setIsLoading(false);
+        return;
+      }
     }
 
     try {
       const user = getCurrentUser();
+      const finalUrl = formData.url === '__custom__' ? formData.customUrl : formData.url;
+      
       await addFeature({
         name: formData.name.trim(),
         description: formData.description.trim(),
         category: formData.category,
-        url: formData.url.trim(),
+        url: finalUrl.trim(),
         isPublic: formData.isPublic,
         status: formData.status,
       }, user?.uid);
@@ -89,7 +97,8 @@ export default function AddFeatureModal({ isOpen, onClose, onSuccess }: AddFeatu
         name: '',
         description: '',
         category: '기타',
-        url: '',
+        url: '__custom__',
+        customUrl: '',
         isPublic: true,
         status: 'completed',
       });
@@ -110,7 +119,8 @@ export default function AddFeatureModal({ isOpen, onClose, onSuccess }: AddFeatu
         name: '',
         description: '',
         category: '기타',
-        url: '',
+        url: '__custom__',
+        customUrl: '',
         isPublic: true,
         status: 'completed',
       });
@@ -149,16 +159,35 @@ export default function AddFeatureModal({ isOpen, onClose, onSuccess }: AddFeatu
             <label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               <FiFileText className="inline w-4 h-4 mr-1" />
               기능 이름 *
+              <span className={`ml-2 text-xs ${
+                formData.name.length >= 90 
+                  ? 'text-red-600 dark:text-red-400 font-semibold' 
+                  : formData.name.length >= 80 
+                  ? 'text-yellow-600 dark:text-yellow-400' 
+                  : 'text-gray-500 dark:text-gray-400'
+              }`}>
+                ({formData.name.length}/100)
+              </span>
             </label>
             <Input
               id="name"
               type="text"
               placeholder="예: 세계시간, 할일 관리"
               value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              onChange={(e) => {
+                if (e.target.value.length <= 100) {
+                  setFormData({ ...formData, name: e.target.value });
+                }
+              }}
+              maxLength={100}
               required
               disabled={isLoading}
             />
+            {formData.name.length >= 90 && (
+              <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                제목이 너무 깁니다. 카드에서 잘릴 수 있습니다.
+              </p>
+            )}
           </div>
 
           {/* 기능 설명 */}
@@ -166,17 +195,36 @@ export default function AddFeatureModal({ isOpen, onClose, onSuccess }: AddFeatu
             <label htmlFor="description" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               <FiFileText className="inline w-4 h-4 mr-1" />
               기능 설명 *
+              <span className={`ml-2 text-xs ${
+                formData.description.length >= 450 
+                  ? 'text-red-600 dark:text-red-400 font-semibold' 
+                  : formData.description.length >= 400 
+                  ? 'text-yellow-600 dark:text-yellow-400' 
+                  : 'text-gray-500 dark:text-gray-400'
+              }`}>
+                ({formData.description.length}/500)
+              </span>
             </label>
             <textarea
               id="description"
               rows={4}
               placeholder="이 기능에 대한 상세한 설명을 입력해주세요"
               value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              onChange={(e) => {
+                if (e.target.value.length <= 500) {
+                  setFormData({ ...formData, description: e.target.value });
+                }
+              }}
+              maxLength={500}
               required
               disabled={isLoading}
               className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed resize-none"
             />
+            {formData.description.length >= 450 && (
+              <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                설명이 너무 깁니다. 카드에서 잘릴 수 있습니다.
+              </p>
+            )}
           </div>
 
           {/* 카테고리 */}
@@ -199,23 +247,34 @@ export default function AddFeatureModal({ isOpen, onClose, onSuccess }: AddFeatu
             </Select>
           </div>
 
-          {/* 웹사이트 URL */}
+          {/* 웹사이트 URL 또는 내부 기능 선택 */}
           <div>
             <label htmlFor="url" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               <FiLink className="inline w-4 h-4 mr-1" />
-              웹사이트 URL *
+              웹사이트 URL 또는 내부 기능 *
             </label>
-            <Input
+            <Select
               id="url"
-              type="url"
-              placeholder="https://example.com"
               value={formData.url}
               onChange={(e) => setFormData({ ...formData, url: e.target.value })}
               required
               disabled={isLoading}
-            />
+            >
+              <option value="__custom__">직접 입력</option>
+              <option value="/features/world-clock?id=world-clock">세계시간</option>
+            </Select>
+            {formData.url === '__custom__' && (
+              <Input
+                type="url"
+                placeholder="https://example.com"
+                value={formData.customUrl || ''}
+                onChange={(e) => setFormData({ ...formData, customUrl: e.target.value })}
+                className="mt-2"
+                disabled={isLoading}
+              />
+            )}
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              사용자가 이 기능에 접근할 수 있는 웹사이트 주소를 입력해주세요.
+              내부 기능을 선택하거나 외부 웹사이트 URL을 직접 입력할 수 있습니다.
             </p>
           </div>
 
