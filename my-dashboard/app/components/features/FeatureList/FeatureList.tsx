@@ -14,6 +14,13 @@ import type { User } from 'firebase/auth';
 import type { Feature } from '@/lib/firebase/features';
 import { deleteFeature, getFeatureById } from '@/lib/firebase/features';
 import { getCreatorSettings } from '@/lib/firebase/worldClock';
+import { 
+  subscribeToFeature, 
+  unsubscribeFromFeature, 
+  isSubscribed,
+  subscribeUserSubscriptions 
+} from '@/lib/firebase/subscriptions';
+import { ToastContainer, type Toast } from '../../ui/Toast';
 import AddFeatureModal from './AddFeatureModal';
 import EditFeatureModal from './EditFeatureModal';
 
@@ -31,6 +38,9 @@ export default function FeatureList() {
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [notificationStats, setNotificationStats] = useState<Record<string, { total: number; active: number; inactive: number }>>({});
+  const [subscriptionStatuses, setSubscriptionStatuses] = useState<Record<string, boolean>>({});
+  const [isSubscribing, setIsSubscribing] = useState<Record<string, boolean>>({});
+  const [toasts, setToasts] = useState<Toast[]>([]);
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const menuRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -43,6 +53,80 @@ export default function FeatureList() {
 
     return () => unsubscribe();
   }, []);
+
+  // 구독 상태 로드 및 실시간 동기화
+  useEffect(() => {
+    if (!currentUserId) {
+      setSubscriptionStatuses({});
+      return;
+    }
+
+    // 초기 구독 상태 로드
+    const loadSubscriptionStatuses = async () => {
+      try {
+        const statuses: Record<string, boolean> = {};
+        // features가 로드된 후에만 구독 상태 확인
+        if (features.length > 0) {
+          for (const feature of features) {
+            if (feature.id) {
+              const subscribed = await isSubscribed(currentUserId, feature.id);
+              statuses[feature.id] = subscribed;
+            }
+          }
+          setSubscriptionStatuses(statuses);
+        }
+      } catch (error) {
+        console.error('구독 상태 로드 실패:', error);
+      }
+    };
+
+    loadSubscriptionStatuses();
+
+    // 실시간 동기화
+    const unsubscribe = subscribeUserSubscriptions(currentUserId, (subscriptions) => {
+      const statuses: Record<string, boolean> = {};
+      subscriptions.forEach(sub => {
+        if (sub.featureId) {
+          statuses[sub.featureId] = true;
+        }
+      });
+      // 기존 상태와 병합 (구독 취소된 경우도 반영)
+      setSubscriptionStatuses(prev => {
+        const merged = { ...prev };
+        // 구독 목록에 있는 것만 true, 나머지는 false
+        features.forEach(f => {
+          if (f.id) {
+            merged[f.id] = statuses[f.id] || false;
+          }
+        });
+        return merged;
+      });
+    });
+
+    return () => unsubscribe();
+  }, [currentUserId]); // features 의존성 제거하여 무한 루프 방지
+
+  // features가 변경될 때 구독 상태 업데이트
+  useEffect(() => {
+    if (!currentUserId || features.length === 0) return;
+
+    const updateSubscriptionStatuses = async () => {
+      try {
+        const statuses: Record<string, boolean> = {};
+        for (const feature of features) {
+          if (feature.id) {
+            const subscribed = await isSubscribed(currentUserId, feature.id);
+            statuses[feature.id] = subscribed;
+          }
+        }
+        setSubscriptionStatuses(prev => ({ ...prev, ...statuses }));
+      } catch (error) {
+        console.error('구독 상태 업데이트 실패:', error);
+      }
+    };
+
+    updateSubscriptionStatuses();
+  }, [currentUserId, features]);
 
   // 외부 클릭 시 카드 축소 및 메뉴 닫기
   useEffect(() => {
@@ -98,7 +182,7 @@ export default function FeatureList() {
         const formattedFeatures: Feature[] = data.map(f => ({
           ...f,
           id: f.id || '',
-          subscribed: f.subscribed ?? false,
+          subscribed: false, // 구독 상태는 subscriptionStatuses에서 관리
           notificationEnabled: f.notificationEnabled ?? false,
         }));
         
@@ -184,7 +268,7 @@ export default function FeatureList() {
         const formattedFeatures: Feature[] = data.map(f => ({
           ...f,
           id: f.id || '',
-          subscribed: f.subscribed ?? false,
+          subscribed: false, // 구독 상태는 subscriptionStatuses에서 관리
           notificationEnabled: f.notificationEnabled ?? false,
         }));
         
@@ -241,16 +325,63 @@ export default function FeatureList() {
     return matchesSearch && matchesCategory;
   });
 
-  const toggleSubscription = (id: string) => {
-    setFeatures(features.map(f => 
-      (f.id || '') === id ? { ...f, subscribed: !(f.subscribed ?? false) } : f
-    ));
+  const handleToggleSubscription = async (feature: Feature) => {
+    if (!currentUserId || !feature.id) {
+      setToasts(prev => [...prev, {
+        id: Date.now().toString(),
+        message: '로그인이 필요합니다.',
+        type: 'error',
+        duration: 3000,
+      }]);
+      return;
+    }
+
+    const isCurrentlySubscribed = subscriptionStatuses[feature.id] || false;
+    setIsSubscribing(prev => ({ ...prev, [feature.id!]: true }));
+
+    try {
+      if (isCurrentlySubscribed) {
+        await unsubscribeFromFeature(currentUserId, feature.id);
+        setSubscriptionStatuses(prev => ({ ...prev, [feature.id!]: false }));
+        setToasts(prev => [...prev, {
+          id: Date.now().toString(),
+          message: `"${feature.name}" 구독이 취소되었습니다.`,
+          type: 'success',
+          duration: 2000,
+        }]);
+      } else {
+        await subscribeToFeature(currentUserId, feature.id);
+        setSubscriptionStatuses(prev => ({ ...prev, [feature.id!]: true }));
+        setToasts(prev => [...prev, {
+          id: Date.now().toString(),
+          message: `"${feature.name}" 구독이 완료되었습니다.`,
+          type: 'success',
+          duration: 2000,
+        }]);
+      }
+    } catch (error: any) {
+      console.error('구독 토글 실패:', error);
+      setToasts(prev => [...prev, {
+        id: Date.now().toString(),
+        message: error.message || '구독 처리에 실패했습니다.',
+        type: 'error',
+        duration: 4000,
+      }]);
+    } finally {
+      setIsSubscribing(prev => ({ ...prev, [feature.id!]: false }));
+    }
+  };
+
+  const handleCloseToast = (id: string) => {
+    setToasts(prev => prev.filter(toast => toast.id !== id));
   };
 
   // 통계 계산
   const totalFeatures = features.length;
-  const subscribedCount = features.filter(f => f.subscribed).length;
-  const activeNotifications = features.filter(f => f.subscribed && f.notificationEnabled).length;
+  const subscribedCount = features.filter(f => f.id && subscriptionStatuses[f.id]).length;
+  const activeNotifications = features.filter(f => 
+    f.id && subscriptionStatuses[f.id] && f.notificationEnabled
+  ).length;
 
   const handleAddSuccess = async () => {
     try {
@@ -468,8 +599,8 @@ export default function FeatureList() {
                   <Badge variant="default">
                     {feature.category}
                   </Badge>
-                  {feature.subscribed && (
-                    <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+                  {feature.id && subscriptionStatuses[feature.id] === true && (
+                    <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 font-medium">
                       <FiCheck size={16} />
                       구독 중
                     </span>
@@ -514,11 +645,12 @@ export default function FeatureList() {
 
               <div className="flex gap-2">
                 <Button
-                  variant={feature.subscribed ? 'secondary' : 'primary'}
+                  variant={feature.id && subscriptionStatuses[feature.id] ? 'secondary' : 'primary'}
                   fullWidth
-                  onClick={() => toggleSubscription(feature.id || '')}
+                  onClick={() => handleToggleSubscription(feature)}
+                  disabled={!currentUserId || (feature.id ? isSubscribing[feature.id] : false)}
                 >
-                  {feature.subscribed ? '구독 취소' : '구독하기'}
+                  {feature.id && subscriptionStatuses[feature.id] ? '구독 취소' : '구독하기'}
                 </Button>
               <Button
                 variant="ghost"
@@ -627,6 +759,9 @@ export default function FeatureList() {
         onSuccess={handleEditSuccess}
         feature={editingFeature}
       />
+
+      {/* 토스트 알림 컨테이너 */}
+      <ToastContainer toasts={toasts} onClose={handleCloseToast} />
     </div>
   );
 }
