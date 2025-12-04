@@ -18,7 +18,8 @@ import {
   subscribeToFeature, 
   unsubscribeFromFeature, 
   isSubscribed,
-  subscribeUserSubscriptions 
+  subscribeUserSubscriptions,
+  getSubscriptionCounts
 } from '@/lib/firebase/subscriptions';
 import { ToastContainer, type Toast } from '../../ui/Toast';
 import AddFeatureModal from './AddFeatureModal';
@@ -28,6 +29,8 @@ export default function FeatureList() {
   const [features, setFeatures] = useState<Feature[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<'latest' | 'popular' | 'name'>('latest');
+  const [subscriptionCounts, setSubscriptionCounts] = useState<Record<string, number>>({});
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingFeature, setEditingFeature] = useState<Feature | null>(null);
@@ -282,6 +285,17 @@ export default function FeatureList() {
         
         setFeatures(filteredFeatures);
         
+        // 구독자 수 로드
+        const featureIds = filteredFeatures.filter(f => f.id).map(f => f.id!);
+        if (featureIds.length > 0) {
+          try {
+            const counts = await getSubscriptionCounts(featureIds);
+            setSubscriptionCounts(counts);
+          } catch (error) {
+            console.error('구독자 수 로드 실패:', error);
+          }
+        }
+        
         // 세계시간 기능의 알림 통계 로드
         const stats: Record<string, { total: number; active: number; inactive: number }> = {};
         for (const feature of filteredFeatures) {
@@ -325,6 +339,24 @@ export default function FeatureList() {
     return matchesSearch && matchesCategory;
   });
 
+  // 정렬 적용
+  const sortedFeatures = [...filteredFeatures].sort((a, b) => {
+    switch (sortBy) {
+      case 'popular':
+        const countA = subscriptionCounts[a.id || ''] || 0;
+        const countB = subscriptionCounts[b.id || ''] || 0;
+        return countB - countA; // 구독자 수 내림차순
+      case 'name':
+        return a.name.localeCompare(b.name, 'ko'); // 이름 가나다순
+      case 'latest':
+      default:
+        // 최신순 (createdAt 기준, 없으면 id 기준)
+        const dateA = a.createdAt?.getTime() || 0;
+        const dateB = b.createdAt?.getTime() || 0;
+        return dateB - dateA; // 최신순
+    }
+  });
+
   const handleToggleSubscription = async (feature: Feature) => {
     if (!currentUserId || !feature.id) {
       setToasts(prev => [...prev, {
@@ -343,6 +375,9 @@ export default function FeatureList() {
       if (isCurrentlySubscribed) {
         await unsubscribeFromFeature(currentUserId, feature.id);
         setSubscriptionStatuses(prev => ({ ...prev, [feature.id!]: false }));
+        // 구독자 수 업데이트
+        const newCount = Math.max(0, (subscriptionCounts[feature.id] || 0) - 1);
+        setSubscriptionCounts(prev => ({ ...prev, [feature.id!]: newCount }));
         setToasts(prev => [...prev, {
           id: Date.now().toString(),
           message: `"${feature.name}" 구독이 취소되었습니다.`,
@@ -352,6 +387,9 @@ export default function FeatureList() {
       } else {
         await subscribeToFeature(currentUserId, feature.id);
         setSubscriptionStatuses(prev => ({ ...prev, [feature.id!]: true }));
+        // 구독자 수 업데이트
+        const newCount = (subscriptionCounts[feature.id] || 0) + 1;
+        setSubscriptionCounts(prev => ({ ...prev, [feature.id!]: newCount }));
         setToasts(prev => [...prev, {
           id: Date.now().toString(),
           message: `"${feature.name}" 구독이 완료되었습니다.`,
@@ -382,6 +420,20 @@ export default function FeatureList() {
   const activeNotifications = features.filter(f => 
     f.id && subscriptionStatuses[f.id] && f.notificationEnabled
   ).length;
+  
+  // 신규 기능 (최근 7일 내 등록)
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const newFeatures = features.filter(f => {
+    if (!f.createdAt) return false;
+    return f.createdAt >= sevenDaysAgo;
+  }).length;
+  
+  // 인기 기능 (구독자 수가 5명 이상)
+  const popularFeatures = features.filter(f => {
+    if (!f.id) return false;
+    return (subscriptionCounts[f.id] || 0) >= 5;
+  }).length;
 
   const handleAddSuccess = async () => {
     try {
@@ -461,16 +513,16 @@ export default function FeatureList() {
           icon={<FiStar className="w-5 h-5" />}
         />
         <StatCard
-          label="구독 중"
-          value={subscribedCount}
-          variant="success"
-          icon={<FiCheck className="w-5 h-5" />}
+          label="신규 기능"
+          value={newFeatures}
+          variant="default"
+          icon={<FiTrendingUp className="w-5 h-5" />}
         />
         <StatCard
-          label="활성 알림"
-          value={activeNotifications}
-          variant="warning"
-          icon={<FiBell className="w-5 h-5" />}
+          label="인기 기능"
+          value={popularFeatures}
+          variant="success"
+          icon={<FiStar className="w-5 h-5" />}
         />
       </div>
 
@@ -493,6 +545,14 @@ export default function FeatureList() {
             </option>
           ))}
         </Select>
+        <Select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as 'latest' | 'popular' | 'name')}
+        >
+          <option value="latest">최신순</option>
+          <option value="popular">인기순</option>
+          <option value="name">이름순</option>
+        </Select>
       </div>
 
       {/* 로딩 상태 */}
@@ -514,7 +574,7 @@ export default function FeatureList() {
       {/* 기능 목록 */}
       {!isLoading && !error && (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
-          {filteredFeatures.map((feature) => {
+          {sortedFeatures.map((feature) => {
             const isExpanded = expandedCardId === feature.id;
             const cardId = feature.id || '';
             
@@ -599,6 +659,12 @@ export default function FeatureList() {
                   <Badge variant="default">
                     {feature.category}
                   </Badge>
+                  {/* 구독자 수 표시 */}
+                  {feature.id && subscriptionCounts[feature.id] !== undefined && (
+                    <Badge variant="default" className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-700">
+                      구독자 {subscriptionCounts[feature.id]}명
+                    </Badge>
+                  )}
                   {feature.id && subscriptionStatuses[feature.id] === true && (
                     <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 font-medium">
                       <FiCheck size={16} />
@@ -723,7 +789,7 @@ export default function FeatureList() {
       )}
 
       {/* 빈 목록 상태 */}
-      {!isLoading && !error && filteredFeatures.length === 0 && (
+      {!isLoading && !error && sortedFeatures.length === 0 && (
         <div className="text-center py-12">
           <p className="text-gray-500 dark:text-gray-400 mb-4">
             {searchTerm || filterCategory !== 'all' 

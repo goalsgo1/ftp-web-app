@@ -9,6 +9,7 @@ import { Toggle } from '@/components/ui/Toggle';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Select } from '@/components/ui/Select';
 import { Input } from '@/components/ui/Input';
+import { TimePicker } from '@/components/ui/TimePicker/TimePicker';
 import { ToastContainer, type Toast } from '@/components/ui/Toast';
 import { StatCard } from '@/components/ui/StatCard';
 import { DashboardLayout } from '@/components/layout';
@@ -16,6 +17,7 @@ import { PageLayout } from '@/components/layout';
 import { onAuthChange, getCurrentUser } from '@/lib/firebase';
 import { getUserWorldClockSettings, saveUserWorldClockSettings, subscribeUserWorldClockSettings, getCreatorSettings, type WorldClockSettings } from '@/lib/firebase/worldClock';
 import { getFeatureById } from '@/lib/firebase/features';
+import { getFeatureSubscribers, isSubscribed } from '@/lib/firebase/subscriptions';
 import { TIMEZONES, getTimezoneInfo, getCurrentTime, formatTime, formatDate, type TimezoneInfo } from '@/lib/utils/timezones';
 import { requestNotificationPermission, showBrowserNotification, checkNotificationTime } from '@/lib/utils/notifications';
 import type { User } from 'firebase/auth';
@@ -145,7 +147,7 @@ export default function WorldClockPage() {
       if (hasAccess === true) {
         if (currentUser) {
           // 로그인한 사용자: 본인 설정 로드
-          loadUserSettings(currentUser.uid);
+          await loadUserSettings(currentUser.uid);
         } else if (feature && feature.createdBy) {
           // 로그인하지 않은 사용자: 공개 기능이면 생성자 설정 로드
           try {
@@ -190,17 +192,27 @@ export default function WorldClockPage() {
           }
         }
         
-        if (currentUser) {
+        if (currentUser && feature) {
           // 로그인한 사용자만 실시간 업데이트 구독
           // 실시간 설정 감지 (다른 탭/브라우저에서 변경 시 자동 업데이트)
           let lastSettingsHash = ''; // 마지막 설정의 해시값 (중복 업데이트 방지)
           
+          // 생성자인 경우 자신의 설정 구독, 구독자인 경우 생성자의 설정 구독
+          const userIdToSubscribe = isFeatureCreator() 
+            ? currentUser.uid 
+            : (feature.createdBy || currentUser.uid);
+          
+          // feature.createdBy가 없으면 구독하지 않음
+          if (!feature.createdBy && !isFeatureCreator()) {
+            return;
+          }
+          
           settingsUnsubscribe = subscribeUserWorldClockSettings(
-            currentUser.uid,
+            userIdToSubscribe,
             featureId,
             (settings) => {
-            // 저장 중이면 무시 (로컬 변경)
-            if (isSavingRef.current) {
+            // 저장 중이면 무시 (로컬 변경) - 생성자인 경우에만
+            if (isSavingRef.current && isFeatureCreator()) {
               return;
             }
 
@@ -242,16 +254,19 @@ export default function WorldClockPage() {
                 
                 lastSettingsHash = settingsHash;
                 
-                // 다른 탭에서 변경된 경우 토스트 알림
+                // 다른 탭/사용자에서 변경된 경우 토스트 알림
                 setToasts((prev: Toast[]) => {
                   // 중복 방지: 이미 같은 메시지가 있으면 추가하지 않음
-                  const hasUpdateToast = prev.some(t => t.message.includes('다른 탭에서'));
+                  const hasUpdateToast = prev.some(t => t.message.includes('설정이 변경되어'));
                   if (!hasUpdateToast) {
+                    const message = isFeatureCreator() 
+                      ? '다른 탭에서 설정이 변경되어 자동으로 업데이트되었습니다.'
+                      : '생성자가 설정을 변경하여 자동으로 업데이트되었습니다.';
                     return [...prev, {
                       id: Date.now().toString(),
-                      message: '다른 탭에서 설정이 변경되어 자동으로 업데이트되었습니다.',
+                      message,
                       type: 'info',
-                      duration: 3000,
+                      // duration을 지정하지 않으면 사용자 설정 사용
                     }];
                   }
                   return prev;
@@ -291,9 +306,9 @@ export default function WorldClockPage() {
         settingsUnsubscribe();
       }
     };
-  }, [featureId, hasAccess]);
+  }, [featureId, hasAccess, feature]);
 
-  // 알림 시간 체크
+  // 알림 시간 체크 (생성자 및 구독자 모두)
   useEffect(() => {
     // 이전 체크 인터벌 정리
     if (notificationCheckRef.current) {
@@ -307,8 +322,40 @@ export default function WorldClockPage() {
       return;
     }
 
+    // 알림 발송 여부 확인 함수
+    const shouldSendNotification = async (): Promise<boolean> => {
+      if (!user || !featureId) return false;
+      
+      // 생성자인 경우 항상 알림 발송
+      if (isFeatureCreator()) {
+        return true;
+      }
+      
+      // 구독자인 경우 알림 설정 확인
+      try {
+        const subscribed = await isSubscribed(user.uid, featureId);
+        if (!subscribed) return false;
+        
+        // 구독자의 알림 활성화 여부 확인
+        // subscriptions 컬렉션에서 notificationEnabled 확인
+        const subscribers = await getFeatureSubscribers(featureId);
+        const userSubscription = subscribers.find(s => s.userId === user.uid);
+        
+        return userSubscription?.notificationEnabled ?? true;
+      } catch (error) {
+        console.error('알림 발송 여부 확인 실패:', error);
+        return false;
+      }
+    };
+
     // 알림 트리거 함수
-    const handleNotificationTrigger = (alert: { timezone: string; time: string; label?: string }) => {
+    const handleNotificationTrigger = async (alert: { timezone: string; time: string; label?: string }) => {
+      // 알림 발송 여부 확인
+      const canSend = await shouldSendNotification();
+      if (!canSend) {
+        return;
+      }
+      
       const tzInfo = getTimezoneInfo(alert.timezone);
       const message = alert.label 
         ? `${tzInfo?.flag} ${tzInfo?.label}: ${alert.label} (${alert.time})`
@@ -320,7 +367,7 @@ export default function WorldClockPage() {
         id: toastId,
         message,
         type: 'info',
-        duration: 5000,
+        // duration을 지정하지 않으면 사용자 설정 사용
       }]);
 
       // 브라우저 알림 (권한이 있는 경우)
@@ -341,7 +388,7 @@ export default function WorldClockPage() {
         notificationCheckRef.current();
       }
     };
-  }, [notificationAlerts, notificationPermission]);
+  }, [notificationAlerts, notificationPermission, user, featureId]);
 
   // 사용자 설정 로드
   const loadUserSettings = async (userId: string): Promise<any> => {
@@ -349,24 +396,73 @@ export default function WorldClockPage() {
       setIsLoading(true);
       const userSettings = await getUserWorldClockSettings(userId, featureId);
       
-      if (userSettings) {
-        const timezones = userSettings.selectedTimezones || ['Asia/Seoul'];
-        const alerts = (userSettings.notifications?.alerts || []).map(alert => ({
-          ...alert,
-          active: alert.active !== undefined ? alert.active : true,
-          isModified: false, // 초기 로드 시 수정 플래그 없음
-        }));
-        
-        setSettings(userSettings);
-        setSelectedTimezones(timezones);
-        setNotificationAlerts(alerts);
-        
-        // ref도 업데이트
-        selectedTimezonesRef.current = timezones;
-        notificationAlertsRef.current = alerts;
-        
-        return userSettings;
+      // 생성자인 경우 자신의 설정 사용
+      if (isFeatureCreator()) {
+        if (userSettings) {
+          const timezones = userSettings.selectedTimezones || ['Asia/Seoul'];
+          const alerts = (userSettings.notifications?.alerts || []).map(alert => ({
+            ...alert,
+            active: alert.active !== undefined ? alert.active : true,
+            isModified: false, // 초기 로드 시 수정 플래그 없음
+          }));
+          
+          setSettings(userSettings);
+          setSelectedTimezones(timezones);
+          setNotificationAlerts(alerts);
+          
+          // ref도 업데이트
+          selectedTimezonesRef.current = timezones;
+          notificationAlertsRef.current = alerts;
+          
+          return userSettings;
+        } else {
+          // 기본 설정
+          const defaultTimezones = ['Asia/Seoul'];
+          const defaultAlerts: Array<{
+            timezone: string;
+            time: string;
+            label?: string;
+            active?: boolean;
+          }> = [];
+          
+          setSelectedTimezones(defaultTimezones);
+          setNotificationAlerts(defaultAlerts);
+          selectedTimezonesRef.current = defaultTimezones;
+          notificationAlertsRef.current = defaultAlerts;
+          
+          return null;
+        }
       } else {
+        // 구독자인 경우 생성자의 알림 설정 사용 (알림 발송을 위해)
+        if (feature && feature.createdBy) {
+          try {
+            const creatorSettings = await getCreatorSettings(featureId, feature.createdBy);
+            
+            if (creatorSettings) {
+              const timezones = creatorSettings.selectedTimezones || ['Asia/Seoul'];
+              const alerts = (creatorSettings.notifications?.alerts || []).map(alert => ({
+                ...alert,
+                active: alert.active !== undefined ? alert.active : true,
+                isModified: false,
+              }));
+              
+              setSelectedTimezones(timezones);
+              setNotificationAlerts(alerts);
+              selectedTimezonesRef.current = timezones;
+              notificationAlertsRef.current = alerts;
+              
+              // 구독자의 설정도 저장 (시간대는 자신의 설정 사용 가능)
+              if (userSettings) {
+                setSettings(userSettings);
+              }
+              
+              return creatorSettings;
+            }
+          } catch (error) {
+            console.error('생성자 설정 로드 실패:', error);
+          }
+        }
+        
         // 기본 설정
         const defaultTimezones = ['Asia/Seoul'];
         const defaultAlerts: Array<{
@@ -416,12 +512,12 @@ export default function WorldClockPage() {
   const handleAddTimezone = async (timezone: string) => {
     // 생성자 권한 체크
     if (!isFeatureCreator()) {
-      setToasts(prev => [...prev, {
-        id: Date.now().toString(),
-        message: '시간대 추가 권한이 없습니다. 생성자만 시간대를 추가할 수 있습니다.',
-        type: 'error',
-        duration: 3000,
-      }]);
+        setToasts(prev => [...prev, {
+          id: Date.now().toString(),
+          message: '시간대 추가 권한이 없습니다. 생성자만 시간대를 추가할 수 있습니다.',
+          type: 'error',
+          // duration을 지정하지 않으면 사용자 설정 사용
+        }]);
       return;
     }
 
@@ -464,7 +560,7 @@ export default function WorldClockPage() {
           id: Date.now().toString(),
           message: `${tzInfo?.flag} ${tzInfo?.label} 시간대가 추가되었습니다.`,
           type: 'success',
-          duration: 2000,
+          // duration을 지정하지 않으면 사용자 설정 사용
         }]);
       } catch (error) {
         console.error('시간대 추가 실패:', error);
@@ -476,7 +572,7 @@ export default function WorldClockPage() {
           id: Date.now().toString(),
           message: '시간대 추가에 실패했습니다.',
           type: 'error',
-          duration: 3000,
+          // duration을 지정하지 않으면 사용자 설정 사용
         }]);
       }
     }
@@ -490,7 +586,7 @@ export default function WorldClockPage() {
         id: Date.now().toString(),
         message: '시간대 삭제 권한이 없습니다. 생성자만 시간대를 삭제할 수 있습니다.',
         type: 'error',
-        duration: 3000,
+        // duration을 지정하지 않으면 사용자 설정 사용
       }]);
       return;
     }
@@ -537,7 +633,7 @@ export default function WorldClockPage() {
         id: Date.now().toString(),
         message: `${tzInfo?.flag} ${tzInfo?.label} 시간대가 제거되었습니다.`,
         type: 'success',
-        duration: 2000,
+        // duration을 지정하지 않으면 사용자 설정 사용
       }]);
     } catch (error) {
       console.error('시간대 제거 실패:', error);
@@ -550,7 +646,7 @@ export default function WorldClockPage() {
         id: Date.now().toString(),
         message: '시간대 제거에 실패했습니다.',
         type: 'error',
-        duration: 3000,
+        // duration을 지정하지 않으면 사용자 설정 사용
       }]);
     }
   };
@@ -563,7 +659,7 @@ export default function WorldClockPage() {
         id: Date.now().toString(),
         message: '알림 추가 권한이 없습니다. 생성자만 알림을 추가할 수 있습니다.',
         type: 'error',
-        duration: 3000,
+        // duration을 지정하지 않으면 사용자 설정 사용
       }]);
       return;
     }
@@ -592,7 +688,7 @@ export default function WorldClockPage() {
         id: Date.now().toString(),
         message: '알림 삭제 권한이 없습니다. 생성자만 알림을 삭제할 수 있습니다.',
         type: 'error',
-        duration: 3000,
+        // duration을 지정하지 않으면 사용자 설정 사용
       }]);
       return;
     }
@@ -632,7 +728,7 @@ export default function WorldClockPage() {
         id: Date.now().toString(),
         message: '알림이 삭제되었습니다.',
         type: 'success',
-        duration: 2000,
+        // duration을 지정하지 않으면 사용자 설정 사용
       }]);
     } catch (error) {
       console.error('알림 삭제 실패:', error);
@@ -644,7 +740,7 @@ export default function WorldClockPage() {
         id: Date.now().toString(),
         message: '알림 삭제에 실패했습니다.',
         type: 'error',
-        duration: 3000,
+        // duration을 지정하지 않으면 사용자 설정 사용
       }]);
     }
   };
@@ -682,7 +778,7 @@ export default function WorldClockPage() {
             id: Date.now().toString(),
             message: '설정이 자동으로 저장되었습니다.',
             type: 'success',
-            duration: 2000,
+            // duration을 지정하지 않으면 사용자 설정 사용
           }]);
         }
       } catch (error) {
@@ -691,7 +787,7 @@ export default function WorldClockPage() {
           id: Date.now().toString(),
           message: '설정 저장에 실패했습니다.',
           type: 'error',
-          duration: 3000,
+          // duration을 지정하지 않으면 사용자 설정 사용
         }]);
       } finally {
         isSavingRef.current = false;
@@ -699,39 +795,16 @@ export default function WorldClockPage() {
     }, 500);
   };
 
-  // 알림 업데이트 (수정 시 비활성화하고 Firestore에 저장하여 다른 탭에 반영)
-  const handleUpdateNotification = async (index: number, field: string, value: string | boolean) => {
+  // 알림 업데이트 (로컬 상태만 업데이트, 저장하지 않음)
+  const handleUpdateNotification = (index: number, field: string, value: string | boolean) => {
     // 생성자 권한 체크
     if (!isFeatureCreator()) {
       setToasts(prev => [...prev, {
         id: Date.now().toString(),
         message: '알림 수정 권한이 없습니다. 생성자만 알림을 수정할 수 있습니다.',
         type: 'error',
-        duration: 3000,
+        // duration을 지정하지 않으면 사용자 설정 사용
       }]);
-      return;
-    }
-
-    if (!user) {
-      // 로그인하지 않은 경우 로컬 상태만 업데이트
-      const updated = [...notificationAlerts];
-      const previousValue = updated[index][field as keyof typeof updated[number]];
-      
-      if (previousValue === value) return;
-
-      if (field === 'timezone' || field === 'time' || field === 'label') {
-        updated[index] = { 
-          ...updated[index], 
-          [field]: value,
-          active: false,
-          isModified: true,
-        };
-      } else {
-        updated[index] = { ...updated[index], [field]: value };
-      }
-      
-      setNotificationAlerts(updated);
-      notificationAlertsRef.current = updated;
       return;
     }
 
@@ -749,42 +822,53 @@ export default function WorldClockPage() {
         active: false, // 수정 중이면 비활성화
         isModified: true, // 수정 플래그 설정
       };
-      
-      // 로컬 상태 먼저 업데이트
-      setNotificationAlerts(updated);
-      notificationAlertsRef.current = updated;
-      
-      // Firestore에 저장하여 다른 탭에 반영 (active: false 상태 포함)
-      try {
-        isSavingRef.current = true;
-        
-        await saveUserWorldClockSettings(user.uid, featureId, {
-          selectedTimezones: selectedTimezonesRef.current,
-          notifications: {
-            enabled: updated.filter(a => a.active !== false).length > 0,
-            alerts: updated.map(({ isModified, ...alert }) => alert), // isModified 제거 후 저장
-          },
-        });
-        
-        // 저장 완료 후 약간의 지연을 두고 플래그 해제
-        setTimeout(() => {
-          isSavingRef.current = false;
-        }, 500);
-      } catch (error) {
-        console.error('알림 수정 저장 실패:', error);
-        isSavingRef.current = false;
-        
-        setToasts(prev => [...prev, {
-          id: Date.now().toString(),
-          message: '알림 수정 저장에 실패했습니다.',
-          type: 'error',
-          duration: 3000,
-        }]);
-      }
     } else {
       updated[index] = { ...updated[index], [field]: value };
-      setNotificationAlerts(updated);
-      notificationAlertsRef.current = updated;
+    }
+    
+    // 로컬 상태만 업데이트 (저장하지 않음)
+    setNotificationAlerts(updated);
+    notificationAlertsRef.current = updated;
+  };
+
+  // 알림 업데이트 후 저장 (onBlur에서 호출)
+  const handleSaveNotificationOnBlur = async (index: number) => {
+    // 생성자 권한 체크
+    if (!isFeatureCreator() || !user) {
+      return;
+    }
+
+    const alert = notificationAlerts[index];
+    if (!alert || !alert.isModified) {
+      // 수정되지 않았으면 저장하지 않음
+      return;
+    }
+
+    try {
+      isSavingRef.current = true;
+      
+      await saveUserWorldClockSettings(user.uid, featureId, {
+        selectedTimezones: selectedTimezonesRef.current,
+        notifications: {
+          enabled: notificationAlerts.filter(a => a.active !== false).length > 0,
+          alerts: notificationAlerts.map(({ isModified, ...alert }) => alert), // isModified 제거 후 저장
+        },
+      });
+      
+      // 저장 완료 후 약간의 지연을 두고 플래그 해제
+      setTimeout(() => {
+        isSavingRef.current = false;
+      }, 500);
+    } catch (error) {
+      console.error('알림 수정 저장 실패:', error);
+      isSavingRef.current = false;
+      
+      setToasts(prev => [...prev, {
+        id: Date.now().toString(),
+        message: '알림 수정 저장에 실패했습니다.',
+        type: 'error',
+        // duration을 지정하지 않으면 사용자 설정 사용
+      }]);
     }
   };
 
@@ -796,7 +880,7 @@ export default function WorldClockPage() {
         id: Date.now().toString(),
         message: '알림 저장 권한이 없습니다. 생성자만 알림을 저장할 수 있습니다.',
         type: 'error',
-        duration: 3000,
+        // duration을 지정하지 않으면 사용자 설정 사용
       }]);
       return;
     }
@@ -836,18 +920,18 @@ export default function WorldClockPage() {
         id: Date.now().toString(),
         message: '알림 설정이 저장되었습니다.',
         type: 'success',
-        duration: 2000,
+        // duration을 지정하지 않으면 사용자 설정 사용
       }]);
     } catch (error) {
       console.error('설정 저장 실패:', error);
       isSavingRef.current = false;
       
-      setToasts(prev => [...prev, {
-        id: Date.now().toString(),
-        message: '설정 저장에 실패했습니다.',
-        type: 'error',
-        duration: 3000,
-      }]);
+        setToasts(prev => [...prev, {
+          id: Date.now().toString(),
+          message: '설정 저장에 실패했습니다.',
+          type: 'error',
+          // duration을 지정하지 않으면 사용자 설정 사용
+        }]);
     }
   };
 
@@ -859,7 +943,7 @@ export default function WorldClockPage() {
         id: Date.now().toString(),
         message: '알림 토글 권한이 없습니다. 생성자만 알림을 활성/비활성할 수 있습니다.',
         type: 'error',
-        duration: 3000,
+        // duration을 지정하지 않으면 사용자 설정 사용
       }]);
       return;
     }
@@ -901,7 +985,7 @@ export default function WorldClockPage() {
           ? '알림이 활성화되어 저장되었습니다.' 
           : '알림이 비활성화되어 저장되었습니다.',
         type: 'success',
-        duration: 2000,
+        // duration을 지정하지 않으면 사용자 설정 사용
       }]);
     } catch (error) {
       console.error('설정 저장 실패:', error);
@@ -909,12 +993,12 @@ export default function WorldClockPage() {
       setNotificationAlerts(notificationAlertsRef.current);
       isSavingRef.current = false;
       
-      setToasts(prev => [...prev, {
-        id: Date.now().toString(),
-        message: '설정 저장에 실패했습니다.',
-        type: 'error',
-        duration: 3000,
-      }]);
+        setToasts(prev => [...prev, {
+          id: Date.now().toString(),
+          message: '설정 저장에 실패했습니다.',
+          type: 'error',
+          // duration을 지정하지 않으면 사용자 설정 사용
+        }]);
     }
   };
 
@@ -927,7 +1011,7 @@ export default function WorldClockPage() {
         id: Date.now().toString(),
         message: '브라우저 알림이 활성화되었습니다.',
         type: 'success',
-        duration: 3000,
+        // duration을 지정하지 않으면 사용자 설정 사용
       }]);
     } else {
       setNotificationPermission(Notification.permission);
@@ -935,7 +1019,7 @@ export default function WorldClockPage() {
         id: Date.now().toString(),
         message: '브라우저 알림 권한이 거부되었습니다.',
         type: 'warning',
-        duration: 3000,
+        // duration을 지정하지 않으면 사용자 설정 사용
       }]);
     }
   };
@@ -1150,6 +1234,7 @@ export default function WorldClockPage() {
                           <Select
                             value={alert.timezone}
                             onChange={(e) => handleUpdateNotification(index, 'timezone', e.target.value)}
+                            onBlur={() => handleSaveNotificationOnBlur(index)}
                             disabled={!isFeatureCreator()}
                           >
                             {selectedTimezones.map(tz => {
@@ -1167,10 +1252,13 @@ export default function WorldClockPage() {
                             알림 시간
                           </label>
                           <div className="flex gap-2">
-                            <Input
-                              type="time"
+                            <TimePicker
                               value={alert.time}
-                              onChange={(e) => handleUpdateNotification(index, 'time', e.target.value)}
+                              onChange={(value) => {
+                                handleUpdateNotification(index, 'time', value);
+                                // 즉시 저장하여 다른 구독자에게 반영
+                                setTimeout(() => handleSaveNotificationOnBlur(index), 100);
+                              }}
                               className="flex-1"
                               disabled={!isFeatureCreator()}
                             />
@@ -1212,7 +1300,7 @@ export default function WorldClockPage() {
                                   id: Date.now().toString(),
                                   message: `${tzInfo?.flag} ${tzInfo?.label}: ${message}`,
                                   type: diffMinutes === 0 ? 'success' : diffMinutes > 0 ? 'info' : 'warning',
-                                  duration: 4000,
+                                  // duration을 지정하지 않으면 사용자 설정 사용
                                 }]);
                               }}
                               icon={<FiRefreshCw size={16} />}
@@ -1224,7 +1312,7 @@ export default function WorldClockPage() {
                             <Button
                               variant="secondary"
                               size="sm"
-                              onClick={() => {
+                              onClick={async () => {
                                 // 해당 시간대의 현재 시간 가져오기
                                 const now = new Date();
                                 const currentTime = now.toLocaleTimeString('ko-KR', {
@@ -1237,12 +1325,15 @@ export default function WorldClockPage() {
                                 // 현재 시간으로 설정
                                 handleUpdateNotification(index, 'time', currentTime);
                                 
+                                // 즉시 저장하여 다른 구독자에게 반영
+                                await handleSaveNotificationOnBlur(index);
+                                
                                 const tzInfo = getTimezoneInfo(alert.timezone);
                                 setToasts(prev => [...prev, {
                                   id: Date.now().toString(),
                                   message: `${tzInfo?.flag} ${tzInfo?.label}의 현재 시간(${currentTime})으로 설정되었습니다.`,
                                   type: 'success',
-                                  duration: 2000,
+                                  // duration을 지정하지 않으면 사용자 설정 사용
                                 }]);
                               }}
                               icon={<FiClock size={16} />}
@@ -1265,6 +1356,7 @@ export default function WorldClockPage() {
                             placeholder="예: 미국 업무 시작"
                             value={alert.label || ''}
                             onChange={(e) => handleUpdateNotification(index, 'label', e.target.value)}
+                            onBlur={() => handleSaveNotificationOnBlur(index)}
                             disabled={!isFeatureCreator()}
                           />
                         </div>

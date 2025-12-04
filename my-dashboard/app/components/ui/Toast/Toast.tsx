@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { FiX, FiCheckCircle, FiInfo, FiAlertCircle, FiAlertTriangle } from 'react-icons/fi';
+import { useToastDuration, useToastAutoCloseEnabled } from '@/contexts/ToastContext';
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning';
 
@@ -19,21 +20,57 @@ interface ToastProps {
 
 export const ToastItem = ({ toast, onClose }: ToastProps) => {
   const [isVisible, setIsVisible] = useState(false);
+  const defaultDuration = useToastDuration(); // 사용자 설정에서 기본 duration 가져오기
+  const autoCloseEnabled = useToastAutoCloseEnabled(); // 사용자 설정에서 자동 닫기 활성화 여부 가져오기
+  const onCloseRef = useRef(onClose);
+  
+  // Toast가 처음 마운트될 때의 duration을 저장 (이후 변경되지 않음)
+  const durationRef = useRef<number | null>(null);
+  if (durationRef.current === null) {
+    // toast.duration이 명시적으로 0이면 자동 닫기 비활성화
+    // 그 외에는 사용자 설정 사용
+    if (toast.duration === 0) {
+      durationRef.current = 0; // 자동 닫기 비활성화
+    } else {
+      durationRef.current = toast.duration ?? (autoCloseEnabled ? defaultDuration : 0);
+    }
+  }
+  
+  // onClose를 ref로 저장하여 의존성 문제 해결
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     // 애니메이션을 위한 지연
-    setTimeout(() => setIsVisible(true), 10);
+    const showTimer = setTimeout(() => setIsVisible(true), 10);
 
-    // 자동 닫기
-    if (toast.duration && toast.duration > 0) {
-      const timer = setTimeout(() => {
+    // 자동 닫기 (초기 duration 사용)
+    const duration = durationRef.current;
+    
+    // 디버깅: duration 확인
+    console.log(`[Toast] ID: ${toast.id}, Duration: ${duration}ms, toast.duration: ${toast.duration}, defaultDuration: ${defaultDuration}, autoCloseEnabled: ${autoCloseEnabled}`);
+    
+    let closeTimer: NodeJS.Timeout | null = null;
+    let removeTimer: NodeJS.Timeout | null = null;
+    
+    // duration이 0보다 크고, 자동 닫기가 활성화되어 있으면 자동 닫기
+    if (duration && duration > 0 && autoCloseEnabled) {
+      closeTimer = setTimeout(() => {
+        console.log(`[Toast] Closing toast ${toast.id} after ${duration}ms`);
         setIsVisible(false);
-        setTimeout(() => onClose(toast.id), 300); // 애니메이션 완료 후 제거
-      }, toast.duration);
-
-      return () => clearTimeout(timer);
+        removeTimer = setTimeout(() => {
+          onCloseRef.current(toast.id);
+        }, 300); // 애니메이션 완료 후 제거
+      }, duration);
     }
-  }, [toast.duration, toast.id, onClose]);
+
+    return () => {
+      clearTimeout(showTimer);
+      if (closeTimer) clearTimeout(closeTimer);
+      if (removeTimer) clearTimeout(removeTimer);
+    };
+  }, [toast.id]); // toast.id만 의존성으로 사용하여 Toast가 변경될 때만 재실행
 
   const handleClose = () => {
     setIsVisible(false);

@@ -11,6 +11,7 @@ import { SearchInput } from '../../ui/Input';
 import { Select } from '../../ui/Select';
 import { StatCard } from '../../ui/StatCard';
 import { ToastContainer, type Toast } from '../../ui/Toast';
+import { Toggle } from '../../ui/Toggle';
 import { onAuthChange, getCurrentUser } from '@/lib/firebase';
 import { getCreatorSettings } from '@/lib/firebase/worldClock';
 import { 
@@ -226,6 +227,10 @@ export default function SubscriptionManagement() {
   const totalSubscriptions = subscriptions.length;
   const activeNotifications = subscriptions.filter(s => s.notificationEnabled).length;
   const inactiveNotifications = subscriptions.filter(s => !s.notificationEnabled).length;
+  
+  // 최근 활동 (최근 7일 내 알림 받은 횟수 - 향후 구현)
+  // 현재는 알림 활성화된 구독 수로 대체
+  const recentActivity = activeNotifications;
 
   // 로그인하지 않은 경우
   if (!user && !isLoading) {
@@ -271,10 +276,10 @@ export default function SubscriptionManagement() {
           icon={<FiCheck className="w-5 h-5" />}
         />
         <StatCard
-          label="알림 비활성화"
-          value={inactiveNotifications}
+          label="최근 활동"
+          value={recentActivity}
           variant="default"
-          icon={<FiBellOff className="w-5 h-5" />}
+          icon={<FiBell className="w-5 h-5" />}
         />
       </div>
 
@@ -368,20 +373,46 @@ export default function SubscriptionManagement() {
                   <p className={`text-gray-600 dark:text-gray-400 mb-4 text-sm break-words ${!isExpanded ? 'line-clamp-2 overflow-hidden' : ''}`}>
                     {feature.description}
                   </p>
+                  
+                  {/* 구독 일자 표시 */}
+                  <div className="mb-3 text-xs text-gray-500 dark:text-gray-400">
+                    <span className="flex items-center gap-1">
+                      <FiClock size={14} />
+                      구독 시작일: {subscription.subscribedAt instanceof Date 
+                        ? subscription.subscribedAt.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
+                        : subscription.subscribedAt?.toDate 
+                        ? subscription.subscribedAt.toDate().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
+                        : '알 수 없음'}
+                    </span>
+                  </div>
 
                   <div className="mt-auto">
-                    {/* 내부 기능인 경우에만 알림 상태 표시 */}
+                    {/* 알림 설정 토글 (강조) */}
                     {feature.url?.startsWith('/features/') && (
-                      <div className="mb-4">
-                        <div className="flex items-center gap-2 mb-2">
-                          <FiInfo size={16} className="text-gray-400" />
-                          <span className="text-xs text-gray-500 dark:text-gray-400">
-                            알림: {subscription.notificationEnabled ? '활성화' : '비활성화'}
-                          </span>
+                      <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            {subscription.notificationEnabled ? (
+                              <FiBell size={18} className="text-green-600 dark:text-green-400" />
+                            ) : (
+                              <FiBellOff size={18} className="text-gray-400" />
+                            )}
+                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                              알림 설정
+                            </span>
+                          </div>
+                          <Toggle
+                            checked={subscription.notificationEnabled}
+                            onChange={() => handleToggleNotification(subscription)}
+                            size="md"
+                          />
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          {subscription.notificationEnabled ? '알림이 활성화되어 있습니다' : '알림이 비활성화되어 있습니다'}
                         </div>
                         {/* 세계시간 기능의 알림 통계 표시 */}
                         {feature.url?.startsWith('/features/world-clock') && feature.id && notificationStats[feature.id] && (
-                          <div className="flex items-center gap-3 text-xs bg-gray-50 dark:bg-gray-800/50 rounded-lg px-3 py-2">
+                          <div className="flex items-center gap-3 text-xs mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
                             <span className="flex items-center gap-1.5 cursor-help" title="전체 알림">
                               <FiBell size={14} className="text-blue-500" />
                               <span className="font-semibold text-blue-600 dark:text-blue-400">{notificationStats[feature.id].total}</span>

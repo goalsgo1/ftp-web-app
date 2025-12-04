@@ -17,6 +17,7 @@ import {
 } from 'react-icons/fi';
 import { onAuthChange, logout, getCurrentUser } from '../lib/firebase';
 import type { User } from 'firebase/auth';
+import { ToastProvider } from '../contexts/ToastContext';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -80,7 +81,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <ToastProvider>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* 헤더 */}
       <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
         <div className="px-4 sm:px-6 lg:px-8">
@@ -220,6 +222,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         </main>
       </div>
     </div>
+    </ToastProvider>
   );
 }
 

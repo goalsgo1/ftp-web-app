@@ -11,7 +11,8 @@ import {
   orderBy,
   Timestamp,
   onSnapshot,
-  Unsubscribe
+  Unsubscribe,
+  count
 } from 'firebase/firestore';
 import { db } from './config';
 import { getCurrentUser } from './auth';
@@ -303,5 +304,74 @@ export const subscribeUserSubscriptions = (
       callback([]);
     }
   );
+};
+
+/**
+ * 기능별 구독자 수 가져오기
+ * @param featureId 기능 ID
+ * @returns 구독자 수
+ */
+export const getSubscriptionCount = async (featureId: string): Promise<number> => {
+  try {
+    const q = query(
+      collection(db, 'subscriptions'),
+      where('featureId', '==', featureId)
+    );
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.size;
+  } catch (error) {
+    console.error('구독자 수 가져오기 실패:', error);
+    return 0;
+  }
+};
+
+/**
+ * 여러 기능의 구독자 수를 한 번에 가져오기
+ * @param featureIds 기능 ID 배열
+ * @returns 기능 ID를 키로 하는 구독자 수 맵
+ */
+export const getSubscriptionCounts = async (featureIds: string[]): Promise<Record<string, number>> => {
+  try {
+    const counts: Record<string, number> = {};
+    
+    // 각 기능별로 구독자 수 가져오기
+    await Promise.all(
+      featureIds.map(async (featureId) => {
+        const count = await getSubscriptionCount(featureId);
+        counts[featureId] = count;
+      })
+    );
+    
+    return counts;
+  } catch (error) {
+    console.error('구독자 수 일괄 가져오기 실패:', error);
+    return {};
+  }
+};
+
+/**
+ * 기능별 구독자 목록 가져오기 (알림 발송용)
+ * @param featureId 기능 ID
+ * @returns 구독자 목록 (userId, notificationEnabled 포함)
+ */
+export const getFeatureSubscribers = async (featureId: string): Promise<Array<{ userId: string; notificationEnabled: boolean }>> => {
+  try {
+    const q = query(
+      collection(db, 'subscriptions'),
+      where('featureId', '==', featureId)
+    );
+    const querySnapshot = await getDocs(q);
+    
+    return querySnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        userId: data.userId,
+        notificationEnabled: data.notificationEnabled ?? true,
+      };
+    });
+  } catch (error) {
+    console.error('구독자 목록 가져오기 실패:', error);
+    return [];
+  }
 };
 
