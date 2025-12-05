@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { FiClock, FiChevronUp, FiChevronDown } from 'react-icons/fi';
 
 interface TimePickerProps {
@@ -16,6 +17,8 @@ export const TimePicker = ({ value, onChange, disabled = false, className = '' }
   const [minute, setMinute] = useState('00');
   const [isAM, setIsAM] = useState(true);
   const pickerRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
 
   // value가 변경되면 내부 상태 업데이트
   useEffect(() => {
@@ -33,10 +36,34 @@ export const TimePicker = ({ value, onChange, disabled = false, className = '' }
     }
   }, [value]);
 
+  // 드롭다운 위치 계산
+  useEffect(() => {
+    if (isOpen && buttonRef.current) {
+      const buttonRect = buttonRef.current.getBoundingClientRect();
+      
+      // 화면 상단에 가깝게 배치 (최소 20px 여백)
+      const top = Math.max(20, buttonRect.top);
+      
+      setDropdownPosition({
+        top,
+        left: buttonRect.left,
+        width: Math.max(buttonRect.width, 280),
+      });
+    }
+  }, [isOpen]);
+
   // 외부 클릭 감지
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (pickerRef.current && !pickerRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      const dropdown = document.querySelector('[data-time-picker-dropdown]');
+      
+      // 버튼이나 드롭다운 내부가 아니면 닫기
+      if (
+        pickerRef.current && 
+        !pickerRef.current.contains(target) &&
+        (!dropdown || !dropdown.contains(target))
+      ) {
         setIsOpen(false);
       }
     };
@@ -105,6 +132,7 @@ export const TimePicker = ({ value, onChange, disabled = false, className = '' }
   return (
     <div className={`relative ${className}`} ref={pickerRef}>
       <button
+        ref={buttonRef}
         type="button"
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}
@@ -135,8 +163,17 @@ export const TimePicker = ({ value, onChange, disabled = false, className = '' }
         )}
       </button>
 
-      {isOpen && (
-        <div className="absolute z-50 mt-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl p-4 min-w-[280px]">
+      {isOpen && typeof window !== 'undefined' && createPortal(
+        <div
+          data-time-picker-dropdown
+          className="fixed z-[9999] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl p-4"
+          style={{
+            top: `${dropdownPosition.top}px`,
+            left: `${dropdownPosition.left}px`,
+            width: `${dropdownPosition.width}px`,
+            minWidth: '280px',
+          }}
+        >
           {/* AM/PM 선택 */}
           <div className="flex gap-2 mb-4">
             <button
@@ -238,9 +275,9 @@ export const TimePicker = ({ value, onChange, disabled = false, className = '' }
               확인
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
 };
-
