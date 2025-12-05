@@ -358,6 +358,22 @@
 2. **features 컬렉션** (필요 시)
    - `creatorId` (오름차순) + `createdAt` (내림차순)
 
+#### notificationLogs 컬렉션 인덱스
+
+알림 수정 로그 기능을 사용하려면 다음 인덱스가 필요합니다:
+
+1. **Firebase Console → Firestore Database → Indexes** 이동
+2. **"복합 인덱스 만들기"** 클릭
+3. 다음 설정 입력:
+   - **컬렉션 ID**: `notificationLogs`
+   - **필드 추가**:
+     - `featureId` (오름차순, Ascending)
+     - `createdAt` (내림차순, Descending)
+4. **인덱스 만들기** 클릭
+5. 인덱스 생성 완료까지 1-2분 대기
+
+또는 에러 메시지에 표시된 링크를 클릭하면 자동으로 인덱스 생성 페이지로 이동합니다.
+
 #### 인덱스 생성 확인
 
 - Firebase Console → Firestore Database → Indexes 탭
