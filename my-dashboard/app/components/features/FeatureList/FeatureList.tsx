@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { FiExternalLink, FiCheck, FiInfo, FiBell, FiStar, FiTrendingUp, FiPlus, FiChevronDown, FiChevronUp, FiMoreVertical, FiTrash2, FiEdit2, FiCheckCircle, FiClock } from 'react-icons/fi';
+import { FiExternalLink, FiCheck, FiInfo, FiBell, FiStar, FiTrendingUp, FiPlus, FiChevronDown, FiChevronUp, FiMoreVertical, FiTrash2, FiEdit2, FiCheckCircle, FiClock, FiGrid, FiList } from 'react-icons/fi';
 import { PageHeader } from '../../ui/PageHeader';
 import { Card } from '../../ui/Card';
 import { Button } from '../../ui/Button';
@@ -44,6 +44,7 @@ export default function FeatureList() {
   const [subscriptionStatuses, setSubscriptionStatuses] = useState<Record<string, boolean>>({});
   const [isSubscribing, setIsSubscribing] = useState<Record<string, boolean>>({});
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const menuRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -553,6 +554,33 @@ export default function FeatureList() {
           <option value="popular">인기순</option>
           <option value="name">이름순</option>
         </Select>
+        {/* 뷰 모드 전환 버튼 */}
+        <div className="flex items-center gap-2 border border-gray-200 dark:border-gray-700 rounded-lg p-1 bg-white dark:bg-gray-800">
+          <button
+            onClick={() => setViewMode('card')}
+            className={`p-2 rounded transition-colors ${
+              viewMode === 'card'
+                ? 'bg-blue-500 text-white'
+                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+            }`}
+            title="카드 보기"
+            aria-label="카드 보기"
+          >
+            <FiGrid size={18} />
+          </button>
+          <button
+            onClick={() => setViewMode('list')}
+            className={`p-2 rounded transition-colors ${
+              viewMode === 'list'
+                ? 'bg-blue-500 text-white'
+                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+            }`}
+            title="리스트 보기"
+            aria-label="리스트 보기"
+          >
+            <FiList size={18} />
+          </button>
+        </div>
       </div>
 
       {/* 로딩 상태 */}
@@ -573,8 +601,9 @@ export default function FeatureList() {
 
       {/* 기능 목록 */}
       {!isLoading && !error && (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
-          {sortedFeatures.map((feature) => {
+        viewMode === 'card' ? (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
+            {sortedFeatures.map((feature) => {
             const isExpanded = expandedCardId === feature.id;
             const cardId = feature.id || '';
             
@@ -785,7 +814,196 @@ export default function FeatureList() {
           </div>
           );
           })}
-        </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {sortedFeatures.map((feature) => {
+              const cardId = feature.id || '';
+              
+              return (
+                <Card
+                  key={cardId}
+                  hover
+                  className="relative"
+                >
+                  <div className="flex items-start gap-4">
+                    {/* 메뉴 버튼 (만든 사람만 표시) */}
+                    {isFeatureOwner(feature) && (
+                      <div className="absolute top-4 right-4 z-20" ref={(el) => {
+                        if (el) {
+                          menuRefs.current[cardId] = el;
+                        }
+                      }}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOpenMenuId(openMenuId === cardId ? null : cardId);
+                          }}
+                          className="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 transition-colors"
+                          aria-label="메뉴"
+                          title="메뉴"
+                        >
+                          <FiMoreVertical size={16} />
+                        </button>
+                        
+                        {/* 드롭다운 메뉴 */}
+                        {openMenuId === cardId && (
+                          <div className="absolute right-0 mt-1 w-32 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-30">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditClick(feature);
+                              }}
+                              className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                            >
+                              <FiEdit2 size={16} />
+                              수정
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteClick(feature);
+                              }}
+                              className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                            >
+                              <FiTrash2 size={16} />
+                              삭제
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-4 mb-3">
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+                            {feature.name}
+                          </h3>
+                          <div className="flex items-center gap-2 flex-wrap mb-2">
+                            {/* URL 또는 내부 기능 표시 */}
+                            {feature.url?.startsWith('/features/') ? (
+                              <Badge variant="default" className="bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-700">
+                                내부 기능
+                              </Badge>
+                            ) : feature.url ? (
+                              <Badge variant="default" className="bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-700">
+                                외부 URL
+                              </Badge>
+                            ) : null}
+                            <Badge variant="default">
+                              {feature.category}
+                            </Badge>
+                            {/* 구독자 수 표시 */}
+                            {feature.id && subscriptionCounts[feature.id] !== undefined && (
+                              <Badge variant="default" className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-700">
+                                구독자 {subscriptionCounts[feature.id]}명
+                              </Badge>
+                            )}
+                            {feature.id && subscriptionStatuses[feature.id] === true && (
+                              <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 font-medium">
+                                <FiCheck size={16} />
+                                구독 중
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <p className="text-gray-600 dark:text-gray-400 mb-4 text-sm">
+                        {feature.description}
+                      </p>
+
+                      {/* 내부 기능인 경우에만 알림 상태 표시 */}
+                      {feature.url?.startsWith('/features/') && (
+                        <div className="mb-4">
+                          <div className="flex items-center gap-2 mb-2">
+                            <FiInfo size={16} className="text-gray-400" />
+                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                              알림: {feature.notificationEnabled ? '활성화' : '비활성화'}
+                            </span>
+                          </div>
+                          {/* 세계시간 기능의 알림 통계 표시 */}
+                          {feature.url?.startsWith('/features/world-clock') && feature.id && notificationStats[feature.id] && (
+                            <div className="flex items-center gap-3 text-xs bg-gray-50 dark:bg-gray-800/50 rounded-lg px-3 py-2">
+                              <span className="flex items-center gap-1.5 cursor-help" title="전체 알림">
+                                <FiBell size={14} className="text-blue-500" />
+                                <span className="font-semibold text-blue-600 dark:text-blue-400">{notificationStats[feature.id].total}</span>
+                              </span>
+                              <span className="flex items-center gap-1.5 cursor-help" title="활성 알림">
+                                <FiCheckCircle size={14} className="text-green-500" />
+                                <span className="font-semibold text-green-600 dark:text-green-400">{notificationStats[feature.id].active}</span>
+                              </span>
+                              <span className="flex items-center gap-1.5 cursor-help" title="비활성 알림">
+                                <FiClock size={14} className="text-gray-500" />
+                                <span className="font-semibold text-gray-600 dark:text-gray-400">{notificationStats[feature.id].inactive}</span>
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="flex gap-2">
+                        <Button
+                          variant={feature.id && subscriptionStatuses[feature.id] ? 'secondary' : 'primary'}
+                          onClick={() => handleToggleSubscription(feature)}
+                          disabled={!currentUserId || (feature.id ? isSubscribing[feature.id] : false)}
+                        >
+                          {feature.id && subscriptionStatuses[feature.id] ? '구독 취소' : '구독하기'}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          onClick={(e) => {
+                            // Ctrl 키가 눌려있으면 새 탭에서 열기
+                            const openInNewTab = e.ctrlKey || e.metaKey;
+                            
+                            // 내부 기능인 경우 (/features/로 시작하는 경우)
+                            if (feature.url?.startsWith('/features/')) {
+                              // URL 파라미터 파싱
+                              const [path, queryString] = feature.url.split('?');
+                              const params = new URLSearchParams(queryString || '');
+                              
+                              // feature.id를 featureId 파라미터로 추가 (각 기능을 고유하게 구분)
+                              if (feature.id) {
+                                params.set('featureId', feature.id);
+                              }
+                              
+                              // 사용자 ID를 파라미터로 추가
+                              if (currentUserId) {
+                                params.set('userId', currentUserId);
+                              }
+                              
+                              const newQueryString = params.toString();
+                              const targetUrl = newQueryString ? `${path}?${newQueryString}` : path;
+                              
+                              if (openInNewTab) {
+                                window.open(targetUrl, '_blank');
+                              } else {
+                                window.location.href = targetUrl;
+                              }
+                            } else {
+                              // 외부 URL인 경우 그대로 사용
+                              if (openInNewTab) {
+                                window.open(feature.url, '_blank');
+                              } else {
+                                window.location.href = feature.url || '#';
+                              }
+                            }
+                          }}
+                          icon={<FiExternalLink size={16} />}
+                          aria-label="웹사이트 열기"
+                          title="웹사이트 열기 (Ctrl + 클릭: 새 탭에서 열기)"
+                        >
+                          <span className="sr-only">웹사이트 열기</span>
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        )
       )}
 
       {/* 빈 목록 상태 */}

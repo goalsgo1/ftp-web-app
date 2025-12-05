@@ -106,15 +106,20 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 // 로딩 중
                 <div className="w-9 h-9 rounded-full bg-gray-200 dark:bg-gray-700 animate-pulse" />
               ) : user ? (
-                // 로그인 상태: 로그아웃 버튼
-                <button
-                  onClick={handleLogout}
-                  className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors"
-                  aria-label="로그아웃"
-                  title={`${user.email || '사용자'} 로그아웃`}
-                >
-                  <FiLogOut size={20} />
-                </button>
+                // 로그인 상태: 이메일 표시 + 로그아웃 버튼
+                <>
+                  <span className="text-sm text-gray-600 dark:text-gray-400 hidden sm:block">
+                    {user.email || '사용자'}
+                  </span>
+                  <button
+                    onClick={handleLogout}
+                    className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors"
+                    aria-label="로그아웃"
+                    title={`${user.email || '사용자'} 로그아웃`}
+                  >
+                    <FiLogOut size={20} />
+                  </button>
+                </>
               ) : (
                 // 로그아웃 상태: 로그인 링크
                 <a

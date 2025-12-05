@@ -302,19 +302,21 @@ export default function EditFeatureModal({ isOpen, onClose, onSuccess, feature }
 
           {/* 완료/준비중 토글 */}
           <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
               {formData.status === 'completed' ? (
-                <FiCheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
+                <FiCheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0" />
               ) : (
-                <FiClock className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
+                <FiClock className="w-5 h-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0" />
               )}
-              <div>
+              <div className="flex-1 min-w-0">
                 <label className="block text-sm font-medium text-gray-900 dark:text-white mb-1">
                   상태
                 </label>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                   {formData.status === 'completed' 
                     ? '완료: 사용자가 바로 사용할 수 있습니다' 
+                    : formData.status === 'coming_soon'
+                    ? '준비중: 곧 출시될 기능입니다'
                     : '준비중: 곧 출시될 기능입니다'}
                 </p>
               </div>
