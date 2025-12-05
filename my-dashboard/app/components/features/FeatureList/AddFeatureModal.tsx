@@ -262,6 +262,7 @@ export default function AddFeatureModal({ isOpen, onClose, onSuccess }: AddFeatu
             >
               <option value="__custom__">직접 입력</option>
               <option value="/features/world-clock?id=world-clock">세계시간</option>
+              <option value="/features/calendar?id=calendar">캘린더</option>
             </Select>
             {formData.url === '__custom__' && (
               <Input
