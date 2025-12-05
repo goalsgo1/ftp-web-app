@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { FiClock, FiBell, FiSettings, FiPlus, FiTrash2, FiCheckCircle, FiSave, FiRefreshCw } from 'react-icons/fi';
+import { FiClock, FiBell, FiSettings, FiPlus, FiTrash2, FiCheckCircle, FiSave, FiRefreshCw, FiList, FiX } from 'react-icons/fi';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Toggle } from '@/components/ui/Toggle';
@@ -20,6 +20,16 @@ import { getFeatureById } from '@/lib/firebase/features';
 import { getFeatureSubscribers, isSubscribed } from '@/lib/firebase/subscriptions';
 import { TIMEZONES, getTimezoneInfo, getCurrentTime, formatTime, formatDate, type TimezoneInfo } from '@/lib/utils/timezones';
 import { requestNotificationPermission, showBrowserNotification, checkNotificationTime } from '@/lib/utils/notifications';
+import { 
+  getNotificationLogs, 
+  logNotificationCreated, 
+  logNotificationSaved, 
+  logNotificationToggled, 
+  logNotificationModified, 
+  logNotificationDeleted,
+  logNotificationDelivered,
+  type NotificationLog 
+} from '@/lib/firebase/notificationLogs';
 import type { User } from 'firebase/auth';
 
 export default function WorldClockPage() {
@@ -36,7 +46,11 @@ export default function WorldClockPage() {
   const [selectedTimezones, setSelectedTimezones] = useState<string[]>(['Asia/Seoul']);
   const [currentTimes, setCurrentTimes] = useState<Record<string, Date>>({});
   const [showNotificationSettings, setShowNotificationSettings] = useState(false);
-  const [notificationAlerts, setNotificationAlerts] = useState<Array<{ timezone: string; time: string; label?: string; active?: boolean; isModified?: boolean }>>([]);
+  const [showNotificationLogs, setShowNotificationLogs] = useState(false);
+  const [notificationLogs, setNotificationLogs] = useState<NotificationLog[]>([]);
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+  const [notificationAlerts, setNotificationAlerts] = useState<Array<{ id?: string; timezone: string; time: string; label?: string; active?: boolean; isModified?: boolean }>>([]);
+  const [selectedAlertIdForLogs, setSelectedAlertIdForLogs] = useState<string>('all'); // 로그 필터링용 선택된 알림 ID
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
   const notificationCheckRef = useRef<(() => void) | null>(null);
@@ -45,6 +59,7 @@ export default function WorldClockPage() {
   // 최신 상태를 참조하기 위한 ref
   const selectedTimezonesRef = useRef<string[]>(['Asia/Seoul']);
   const notificationAlertsRef = useRef<Array<{
+    id?: string;
     timezone: string;
     time: string;
     label?: string;
@@ -158,6 +173,8 @@ export default function WorldClockPage() {
               const timezones = creatorSettings.selectedTimezones || ['Asia/Seoul'];
               const alerts = (creatorSettings.notifications?.alerts || []).map(alert => ({
                 ...alert,
+                // 기존 알림에 ID가 없으면 생성 (하위 호환성)
+                id: alert.id || `${alert.timezone}:${alert.time}`,
                 active: alert.active !== undefined ? alert.active : true,
                 isModified: false,
               }));
@@ -239,6 +256,8 @@ export default function WorldClockPage() {
                 const updatedTimezones = settings.selectedTimezones || ['Asia/Seoul'];
                 const updatedAlerts = (settings.notifications?.alerts || []).map(alert => ({
                   ...alert,
+                  // 기존 알림에 ID가 없으면 생성 (하위 호환성)
+                  id: alert.id || `${alert.timezone}:${alert.time}`,
                   active: alert.active !== undefined ? alert.active : true,
                   isModified: false, // 실시간 업데이트 시 수정 플래그 제거
                 }));
@@ -378,6 +397,17 @@ export default function WorldClockPage() {
           requireInteraction: false,
         });
       }
+
+      // 알림 전달 로그 기록
+      if (featureId) {
+        try {
+          const subscribers = await getFeatureSubscribers(featureId);
+          const subscriberCount = subscribers.filter(s => s.notificationEnabled).length;
+          logNotificationDelivered(featureId, alert, subscriberCount);
+        } catch (error) {
+          console.error('구독자 수 조회 실패:', error);
+        }
+      }
     };
 
     // 활성화된 알림만 체크
@@ -402,6 +432,8 @@ export default function WorldClockPage() {
           const timezones = userSettings.selectedTimezones || ['Asia/Seoul'];
           const alerts = (userSettings.notifications?.alerts || []).map(alert => ({
             ...alert,
+            // 기존 알림에 ID가 없으면 생성 (하위 호환성)
+            id: alert.id || `${alert.timezone}:${alert.time}`,
             active: alert.active !== undefined ? alert.active : true,
             isModified: false, // 초기 로드 시 수정 플래그 없음
           }));
@@ -442,6 +474,8 @@ export default function WorldClockPage() {
               const timezones = creatorSettings.selectedTimezones || ['Asia/Seoul'];
               const alerts = (creatorSettings.notifications?.alerts || []).map(alert => ({
                 ...alert,
+                // 기존 알림에 ID가 없으면 생성 (하위 호환성)
+                id: alert.id || `${alert.timezone}:${alert.time}`,
                 active: alert.active !== undefined ? alert.active : true,
                 isModified: false,
               }));
@@ -666,18 +700,26 @@ export default function WorldClockPage() {
 
     if (selectedTimezones.length === 0) return;
     
-    const updated = [
-      ...notificationAlerts,
-      {
-        timezone: selectedTimezones[0],
-        time: '09:00',
-        label: '',
-        active: false, // 새로 추가된 알림은 비활성화 (사용자가 활성화해야 함)
-        isModified: false, // 새로 추가된 알림은 수정 플래그 없음
-      },
-    ];
+    // 고유 알림 ID 생성 (타임스탬프 + 랜덤 문자열)
+    const alertId = `alert_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    const newAlert = {
+      id: alertId,
+      timezone: selectedTimezones[0],
+      time: '09:00',
+      label: '',
+      active: false, // 새로 추가된 알림은 비활성화 (사용자가 활성화해야 함)
+      isModified: false, // 새로 추가된 알림은 수정 플래그 없음
+    };
+    
+    const updated = [...notificationAlerts, newAlert];
     setNotificationAlerts(updated);
     notificationAlertsRef.current = updated;
+
+    // 알림 생성 로그 기록
+    if (featureId) {
+      logNotificationCreated(featureId, newAlert);
+    }
   };
 
   // 알림 제거 (즉시 저장하여 다른 탭에 반영)
@@ -701,6 +743,7 @@ export default function WorldClockPage() {
       return;
     }
 
+    const alertToDelete = notificationAlerts[index];
     const updated = notificationAlerts.filter((_, i) => i !== index);
     
     // 로컬 상태 먼저 업데이트
@@ -730,6 +773,11 @@ export default function WorldClockPage() {
         type: 'success',
         // duration을 지정하지 않으면 사용자 설정 사용
       }]);
+
+      // 알림 삭제 로그 기록
+      if (featureId && alertToDelete) {
+        logNotificationDeleted(featureId, alertToDelete);
+      }
     } catch (error) {
       console.error('알림 삭제 실패:', error);
       // 저장 실패 시 이전 상태로 복구
@@ -844,6 +892,11 @@ export default function WorldClockPage() {
       return;
     }
 
+    // 변경사항 추적을 위해 이전 값 저장 (실제로는 settings에서 가져와야 하지만 간단하게 처리)
+    const previousAlert = settings?.notifications?.alerts?.find(
+      a => a.timezone === alert.timezone && a.time === alert.time
+    );
+
     try {
       isSavingRef.current = true;
       
@@ -859,6 +912,36 @@ export default function WorldClockPage() {
       setTimeout(() => {
         isSavingRef.current = false;
       }, 500);
+
+      // 알림 수정 로그 기록
+      if (featureId) {
+        const alertId = alert.id || `${alert.timezone}:${alert.time}`;
+        const alertName = alert.label || `${alert.timezone} ${alert.time}`;
+        const changes: Array<{ field: string; oldValue?: string; newValue?: string }> = [];
+
+        if (previousAlert) {
+          if (previousAlert.timezone !== alert.timezone) {
+            changes.push({ field: 'timezone', oldValue: previousAlert.timezone, newValue: alert.timezone });
+          }
+          if (previousAlert.time !== alert.time) {
+            changes.push({ field: 'time', oldValue: previousAlert.time, newValue: alert.time });
+          }
+          if (previousAlert.label !== alert.label) {
+            changes.push({ field: 'label', oldValue: previousAlert.label || '', newValue: alert.label || '' });
+          }
+        } else {
+          // 이전 값이 없으면 현재 값만 기록
+          changes.push({ field: 'timezone', newValue: alert.timezone });
+          changes.push({ field: 'time', newValue: alert.time });
+          if (alert.label) {
+            changes.push({ field: 'label', newValue: alert.label });
+          }
+        }
+
+        if (changes.length > 0) {
+          logNotificationModified(featureId, alertId, alertName, changes);
+        }
+      }
     } catch (error) {
       console.error('알림 수정 저장 실패:', error);
       isSavingRef.current = false;
@@ -922,6 +1005,11 @@ export default function WorldClockPage() {
         type: 'success',
         // duration을 지정하지 않으면 사용자 설정 사용
       }]);
+
+      // 알림 저장 로그 기록
+      if (featureId) {
+        logNotificationSaved(featureId, alertToSave);
+      }
     } catch (error) {
       console.error('설정 저장 실패:', error);
       isSavingRef.current = false;
@@ -987,6 +1075,11 @@ export default function WorldClockPage() {
         type: 'success',
         // duration을 지정하지 않으면 사용자 설정 사용
       }]);
+
+      // 알림 활성화/비활성화 로그 기록
+      if (featureId) {
+        logNotificationToggled(featureId, updated[index], newActiveState);
+      }
     } catch (error) {
       console.error('설정 저장 실패:', error);
       // 저장 실패 시 이전 상태로 복구
@@ -1163,6 +1256,28 @@ export default function WorldClockPage() {
                 icon={<FiBell size={18} />}
               >
                 {showNotificationSettings ? '숨기기' : '알림 설정'}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={async () => {
+                  if (!showNotificationLogs) {
+                    setIsLoadingLogs(true);
+                    try {
+                      const logs = await getNotificationLogs(featureId);
+                      setNotificationLogs(logs);
+                      // 알림 목록이 변경되면 필터 초기화
+                      setSelectedAlertIdForLogs('all');
+                    } catch (error) {
+                      console.error('로그 조회 실패:', error);
+                    } finally {
+                      setIsLoadingLogs(false);
+                    }
+                  }
+                  setShowNotificationLogs(!showNotificationLogs);
+                }}
+                icon={<FiList size={18} />}
+              >
+                수정로그
               </Button>
             </div>
           </div>
@@ -1412,6 +1527,206 @@ export default function WorldClockPage() {
                 </p>
               </div>
             </div>
+          )}
+
+          {/* 수정로그 모달 */}
+          {showNotificationLogs && (
+            <Card className="mt-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  알림 수정 로그
+                </h3>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={async () => {
+                      setIsLoadingLogs(true);
+                      try {
+                        const logs = await getNotificationLogs(featureId);
+                        setNotificationLogs(logs);
+                        setToasts(prev => [...prev, {
+                          id: Date.now().toString(),
+                          message: '로그를 새로고침했습니다.',
+                          type: 'success',
+                        }]);
+                      } catch (error) {
+                        console.error('로그 조회 실패:', error);
+                        setToasts(prev => [...prev, {
+                          id: Date.now().toString(),
+                          message: '로그 새로고침에 실패했습니다.',
+                          type: 'error',
+                        }]);
+                      } finally {
+                        setIsLoadingLogs(false);
+                      }
+                    }}
+                    icon={<FiRefreshCw size={16} />}
+                    disabled={isLoadingLogs}
+                  >
+                    새로고침
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowNotificationLogs(false)}
+                    icon={<FiX size={16} />}
+                  >
+                    닫기
+                  </Button>
+                </div>
+              </div>
+
+              {/* 알림 필터링 selectbox */}
+              {notificationAlerts.length > 0 && (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    알림 선택
+                  </label>
+                  <Select
+                    value={selectedAlertIdForLogs}
+                    onChange={(e) => setSelectedAlertIdForLogs(e.target.value)}
+                    className="w-full"
+                  >
+                    <option value="all">전체 알림</option>
+                    {notificationAlerts.map((alert, index) => {
+                      const timezoneInfo = getTimezoneInfo(alert.timezone);
+                      const alertLabel = alert.label || (timezoneInfo ? `${timezoneInfo.label} ${alert.time}` : `${alert.timezone} ${alert.time}`);
+                      const alertId = alert.id || `${alert.timezone}:${alert.time}`;
+                      return (
+                        <option key={alertId} value={alertId}>
+                          {index + 1}. {alertLabel}
+                        </option>
+                      );
+                    })}
+                  </Select>
+                </div>
+              )}
+
+              {isLoadingLogs ? (
+                <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                  로그를 불러오는 중...
+                </div>
+              ) : (() => {
+                // 필터링된 로그
+                const filteredLogs = selectedAlertIdForLogs === 'all'
+                  ? notificationLogs
+                  : notificationLogs.filter(log => log.alertId === selectedAlertIdForLogs);
+
+                if (filteredLogs.length === 0) {
+                  return (
+                    <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                      {selectedAlertIdForLogs === 'all' 
+                        ? '기록된 로그가 없습니다.'
+                        : '선택한 알림의 로그가 없습니다.'}
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                    {filteredLogs.map((log) => {
+                    const actionLabels: Record<NotificationLog['action'], string> = {
+                      created: '생성',
+                      saved: '저장',
+                      activated: '활성화',
+                      deactivated: '비활성화',
+                      modified: '수정',
+                      deleted: '삭제',
+                      delivered: '전달',
+                    };
+
+                    const actionColors: Record<NotificationLog['action'], string> = {
+                      created: 'bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-200',
+                      saved: 'bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-200',
+                      activated: 'bg-emerald-100 dark:bg-emerald-900/20 text-emerald-800 dark:text-emerald-200',
+                      deactivated: 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200',
+                      modified: 'bg-yellow-100 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-200',
+                      deleted: 'bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-200',
+                      delivered: 'bg-purple-100 dark:bg-purple-900/20 text-purple-800 dark:text-purple-200',
+                    };
+
+                    const formatDateTime = (date: Date) => {
+                      return new Intl.DateTimeFormat('ko-KR', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                      }).format(date);
+                    };
+
+                    return (
+                      <div
+                        key={log.id}
+                        className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50"
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className={`px-2 py-1 rounded text-xs font-medium ${actionColors[log.action]}`}>
+                                {actionLabels[log.action]}
+                              </span>
+                              <span className="text-sm text-gray-600 dark:text-gray-400">
+                                {formatDateTime(log.createdAt)}
+                              </span>
+                            </div>
+                            
+                            <div className="space-y-1 text-sm">
+                              {log.alertName && (
+                                <div>
+                                  <span className="font-medium text-gray-700 dark:text-gray-300">알림:</span>{' '}
+                                  <span className="text-gray-900 dark:text-white">{log.alertName}</span>
+                                </div>
+                              )}
+                              
+                              {log.alertTime && (
+                                <div>
+                                  <span className="font-medium text-gray-700 dark:text-gray-300">시간:</span>{' '}
+                                  <span className="text-gray-900 dark:text-white">{log.alertTime}</span>
+                                </div>
+                              )}
+
+                              {log.userName && (
+                                <div>
+                                  <span className="font-medium text-gray-700 dark:text-gray-300">사용자:</span>{' '}
+                                  <span className="text-gray-900 dark:text-white">{log.userName}</span>
+                                  {log.userEmail && (
+                                    <span className="text-gray-500 dark:text-gray-400"> ({log.userEmail})</span>
+                                  )}
+                                </div>
+                              )}
+
+                              {log.subscriberCount !== undefined && (
+                                <div>
+                                  <span className="font-medium text-gray-700 dark:text-gray-300">구독자 수:</span>{' '}
+                                  <span className="text-gray-900 dark:text-white">{log.subscriberCount}명</span>
+                                </div>
+                              )}
+
+                              {log.changes && log.changes.length > 0 && (
+                                <div>
+                                  <span className="font-medium text-gray-700 dark:text-gray-300">변경사항:</span>
+                                  <ul className="list-disc list-inside ml-2 text-gray-600 dark:text-gray-400">
+                                    {log.changes.map((change, idx) => (
+                                      <li key={idx}>
+                                        {change.field}: {change.oldValue || '(없음)'} → {change.newValue || '(없음)'}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                );
+              })()}
+            </Card>
           )}
         </Card>
       )}

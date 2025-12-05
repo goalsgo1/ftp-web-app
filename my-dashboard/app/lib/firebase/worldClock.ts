@@ -21,6 +21,7 @@ export interface WorldClockSettings {
   notifications: {
     enabled: boolean;
     alerts: Array<{
+      id?: string; // 고유 알림 ID (생성 시 자동 생성)
       timezone: string; // 시간대 (예: 'America/New_York')
       time: string; // 시간 (HH:mm 형식, 예: '15:00')
       label?: string; // 알림 라벨 (선택사항)
