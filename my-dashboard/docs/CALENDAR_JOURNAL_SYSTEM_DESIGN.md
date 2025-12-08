@@ -120,16 +120,30 @@ interface ParsedJournal {
 │  │ ## 2025년 10월 15일 (수요일)        │   │
 │  │ ### 회사 업무                        │   │
 │  │ - **사무실 가구 배치** ...          │   │
-│  │ ...                                  │   │
+│  │ 또는                                │   │
+│  │ -제목-                              │   │
+│  │ @카테고리: 회사 업무                │   │
+│  │ @태그: EDR, 학습                    │   │
+│  │ --내용--                            │   │
 │  └─────────────────────────────────────┘   │
 │                                            │
 │  [파싱 옵션]                               │
 │  ☑ 날짜 자동 감지                          │
 │  ☑ 카테고리 자동 추출                      │
 │  ☑ 항목별로 분리                          │
+│  ☑ 키워드 기반 파싱 (권장)                 │
+│                                            │
+│  [키워드 도움말]                           │
+│  -제목- : 제목 지정                        │
+│  --내용-- : 내용 지정                      │
+│  @태그: : 태그 추가                        │
+│  @상태: : 상태 지정                        │
+│  ...                                       │
 │                                            │
 │  [미리보기]                                │
 │  📅 2025-10-15: 3개 항목                  │
+│    ✓ Genian EDR 관리자 메뉴얼 확인        │
+│    ✓ 회사 노트북 발급                      │
 │  📅 2025-10-16: 2개 항목                  │
 │  ...                                       │
 │                                            │
@@ -139,10 +153,13 @@ interface ParsedJournal {
 
 #### 기능
 - 마크다운 텍스트 붙여넣기
+- **키워드 기반 파싱**: `-제목-`, `--내용--`, `@태그:` 등 구조화된 형식 지원
+- **기존 마크다운 파싱**: `## 날짜`, `### 카테고리`, `- **제목** - 내용` 형식 지원
 - 자동 날짜 파싱 (## 2025년 10월 15일 형식)
-- 카테고리 추출 (### 회사 업무 형식)
+- 카테고리 추출 (### 회사 업무 형식 또는 @카테고리: 형식)
 - 항목별 분리 및 미리보기
 - 파싱 결과 확인 후 저장
+- 키워드 도움말 제공
 
 ---
 
@@ -278,7 +295,7 @@ interface ParsedJournal {
 
 ## 4. 마크다운 파싱 로직
 
-### 4.1 파싱 규칙
+### 4.1 기본 파싱 규칙
 
 ```typescript
 // 날짜 파싱
@@ -291,7 +308,259 @@ const categoryPattern = /^###\s+(.+?)(?:\s*-\s*(.+))?$/;
 const itemPattern = /^-\s+\*\*(.+?)\*\*\s*-\s*(.+)$/;
 ```
 
-### 4.2 파싱 예시
+### 4.2 구조화된 파싱 규칙 (키워드 기반)
+
+사용자가 특정 형식의 키워드를 사용하면 해당 필드에 자동으로 매핑됩니다.
+
+#### 4.2.1 필드별 키워드 형식
+
+| 필드 | 키워드 형식 | 예시 | 설명 |
+|------|------------|------|------|
+| **제목** | `-<제목>-` | `-Genian EDR 관리자 메뉴얼 확인-` | 제목을 명시적으로 지정 |
+| **내용** | `--<내용>--` | `--업무 파악 및 자체 학습--` | 내용을 명시적으로 지정 |
+| **카테고리** | `@카테고리:` | `@카테고리: 회사 업무` | 카테고리 지정 |
+| **하위 카테고리** | `@하위카테고리:` | `@하위카테고리: EDR 학습` | 하위 카테고리 지정 |
+| **상태** | `@상태:` | `@상태: 했던일` | 상태 지정 (해야할일/하는중/했던일) |
+| **태그** | `@태그:` | `@태그: EDR, 리눅스, 학습` | 일반 태그 (쉼표로 구분) |
+| **작업 유형** | `@작업유형:` | `@작업유형: 문서분석, 테스트` | 작업 유형 태그 |
+| **프로젝트** | `@프로젝트:` | `@프로젝트: 옵티몬, 웹서버` | 프로젝트 태그 |
+| **할일** | `@할일:` | `@할일: true` | 할일 여부 (true/false) |
+| **앞으로 할일** | `@앞으로할일:` | `@앞으로할일: true` | 앞으로 해야할일 여부 |
+| **할일 예정일** | `@할일예정일:` | `@할일예정일: 2025-12-10` | 할일 예정일 지정 |
+| **색상** | `@색상:` | `@색상: #3b82f6` | 캘린더 표시 색상 |
+
+#### 4.2.2 파싱 우선순위
+
+1. **명시적 키워드** (최우선): `-<제목>-`, `--<내용>--`, `@키워드:` 형식
+2. **마크다운 구조**: `## 날짜`, `### 카테고리`, `- **제목** - 내용` 형식
+3. **기본값**: 키워드가 없으면 기존 마크다운 구조로 파싱
+
+#### 4.2.3 파싱 예시
+
+**입력 예시 1: 키워드 기반**
+```markdown
+## 2025년 10월 15일 (수요일)
+
+-Genian EDR 관리자 메뉴얼 확인-
+@카테고리: 회사 업무
+@하위카테고리: EDR 학습
+@상태: 했던일
+@태그: EDR, 학습, 문서분석
+@작업유형: 문서분석
+@프로젝트: 옵티몬
+--목적: 업무 파악 및 자체 학습
+배경: 회사에서 EDR과 유사한 엔드포인트 보안 프로젝트를 진행할 예정이라 학습 필요--
+```
+
+**파싱 결과:**
+```typescript
+{
+  date: "2025-10-15",
+  title: "Genian EDR 관리자 메뉴얼 확인",
+  content: "목적: 업무 파악 및 자체 학습\n배경: 회사에서 EDR과 유사한 엔드포인트 보안 프로젝트를 진행할 예정이라 학습 필요",
+  category: "회사 업무",
+  subCategory: "EDR 학습",
+  status: "done",
+  tags: ["EDR", "학습", "문서분석"],
+  workTypeTags: ["문서분석"],
+  projectTags: ["옵티몬"],
+  isTodo: false,
+  isFutureTodo: false
+}
+```
+
+**입력 예시 2: 혼합 형식 (키워드 + 마크다운)**
+```markdown
+## 2025년 10월 16일 (목요일)
+
+### 회사 업무 - EDR 학습
+
+- **Genian EDR 관리자 메뉴얼 확인**
+  @태그: EDR, 학습
+  @상태: 했던일
+  - 목적: 업무 파악 및 자체 학습
+```
+
+**파싱 결과:**
+```typescript
+{
+  date: "2025-10-16",
+  title: "Genian EDR 관리자 메뉴얼 확인",
+  content: "목적: 업무 파악 및 자체 학습",
+  category: "회사 업무",
+  subCategory: "EDR 학습",
+  status: "done",
+  tags: ["EDR", "학습"]
+}
+```
+
+**입력 예시 3: 할일 지정**
+```markdown
+## 2025년 12월 10일 (화요일)
+
+-옵티몬 Agent 화면 개선-
+@카테고리: 회사 업무
+@상태: 해야할일
+@할일: true
+@할일예정일: 2025-12-10
+@태그: 옵티몬, 개발, UI
+--그리드 스타일 변경 및 기능 개선--
+```
+
+**파싱 결과:**
+```typescript
+{
+  date: "2025-12-10",
+  title: "옵티몬 Agent 화면 개선",
+  content: "그리드 스타일 변경 및 기능 개선",
+  category: "회사 업무",
+  status: "todo",
+  tags: ["옵티몬", "개발", "UI"],
+  isTodo: true,
+  todoDate: "2025-12-10"
+}
+```
+
+#### 4.2.4 파싱 로직 구현
+
+```typescript
+interface ParseOptions {
+  useKeywords?: boolean;  // 키워드 파싱 사용 여부 (기본값: true)
+  strictMode?: boolean;   // 엄격 모드 (키워드 없으면 에러)
+}
+
+function parseJournalEntry(
+  text: string, 
+  date: Date, 
+  options: ParseOptions = {}
+): JournalEntry {
+  const entry: Partial<JournalEntry> = {
+    date,
+    status: 'done', // 기본값
+    tags: [],
+    workTypeTags: [],
+    projectTags: []
+  };
+
+  // 1. 제목 파싱 (-<제목>-)
+  const titleMatch = text.match(/-([^-]+)-/);
+  if (titleMatch) {
+    entry.title = titleMatch[1].trim();
+  }
+
+  // 2. 내용 파싱 (--<내용>--)
+  const contentMatch = text.match(/--([^-]+)--/s);
+  if (contentMatch) {
+    entry.content = contentMatch[1].trim();
+  }
+
+  // 3. 카테고리 파싱 (@카테고리:)
+  const categoryMatch = text.match(/@카테고리:\s*(.+)/);
+  if (categoryMatch) {
+    entry.category = categoryMatch[1].trim();
+  }
+
+  // 4. 하위 카테고리 파싱 (@하위카테고리:)
+  const subCategoryMatch = text.match(/@하위카테고리:\s*(.+)/);
+  if (subCategoryMatch) {
+    entry.subCategory = subCategoryMatch[1].trim();
+  }
+
+  // 5. 상태 파싱 (@상태:)
+  const statusMatch = text.match(/@상태:\s*(해야할일|하는중|했던일)/);
+  if (statusMatch) {
+    const statusMap: Record<string, 'todo' | 'in_progress' | 'done'> = {
+      '해야할일': 'todo',
+      '하는중': 'in_progress',
+      '했던일': 'done'
+    };
+    entry.status = statusMap[statusMatch[1]];
+  }
+
+  // 6. 태그 파싱 (@태그:)
+  const tagsMatch = text.match(/@태그:\s*(.+)/);
+  if (tagsMatch) {
+    entry.tags = tagsMatch[1].split(',').map(t => t.trim()).filter(Boolean);
+  }
+
+  // 7. 작업 유형 파싱 (@작업유형:)
+  const workTypeMatch = text.match(/@작업유형:\s*(.+)/);
+  if (workTypeMatch) {
+    entry.workTypeTags = workTypeMatch[1].split(',').map(t => t.trim()).filter(Boolean);
+  }
+
+  // 8. 프로젝트 파싱 (@프로젝트:)
+  const projectMatch = text.match(/@프로젝트:\s*(.+)/);
+  if (projectMatch) {
+    entry.projectTags = projectMatch[1].split(',').map(t => t.trim()).filter(Boolean);
+  }
+
+  // 9. 할일 파싱 (@할일:)
+  const todoMatch = text.match(/@할일:\s*(true|false)/);
+  if (todoMatch) {
+    entry.isTodo = todoMatch[1] === 'true';
+  }
+
+  // 10. 앞으로 할일 파싱 (@앞으로할일:)
+  const futureTodoMatch = text.match(/@앞으로할일:\s*(true|false)/);
+  if (futureTodoMatch) {
+    entry.isFutureTodo = futureTodoMatch[1] === 'true';
+  }
+
+  // 11. 할일 예정일 파싱 (@할일예정일:)
+  const todoDateMatch = text.match(/@할일예정일:\s*(\d{4}-\d{2}-\d{2})/);
+  if (todoDateMatch) {
+    entry.todoDate = new Date(todoDateMatch[1]);
+  }
+
+  // 12. 색상 파싱 (@색상:)
+  const colorMatch = text.match(/@색상:\s*(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3})/);
+  if (colorMatch) {
+    entry.color = colorMatch[1];
+  }
+
+  // 키워드가 없으면 기존 마크다운 구조로 파싱
+  if (!entry.title && !entry.content && !options.strictMode) {
+    return parseMarkdownStructure(text, date);
+  }
+
+  return entry as JournalEntry;
+}
+```
+
+#### 4.2.5 키워드 사용 가이드
+
+**기본 사용법:**
+```markdown
+-제목-
+@카테고리: 회사 업무
+@태그: EDR, 학습
+--내용--
+```
+
+**고급 사용법:**
+```markdown
+-제목-
+@카테고리: 회사 업무
+@하위카테고리: EDR 학습
+@상태: 하는중
+@태그: EDR, 리눅스
+@작업유형: 문서분석, 테스트
+@프로젝트: 옵티몬
+@할일: true
+@할일예정일: 2025-12-10
+@색상: #3b82f6
+--상세 내용을 여기에 작성합니다.
+여러 줄도 가능합니다.--
+```
+
+**주의사항:**
+- 키워드는 대소문자 구분 없음 (`@태그:` = `@태그:` = `@TAG:`)
+- 태그는 쉼표(`,`)로 구분
+- 제목과 내용은 각각 한 번만 사용 가능 (첫 번째 것만 인식)
+- 키워드가 없으면 기존 마크다운 구조로 자동 파싱
+
+### 4.3 기존 마크다운 구조 파싱 예시
 
 **입력:**
 ```markdown

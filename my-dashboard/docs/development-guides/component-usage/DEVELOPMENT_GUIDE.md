@@ -5,6 +5,19 @@
 
 ---
 
+## 📋 이 가이드의 목적
+
+이 문서는 다음을 다룹니다:
+- 공통 컴포넌트 사용법
+- 디자인 시스템 활용
+- 새 페이지/기능 추가 방법
+- 코드 스타일 가이드
+- 디자인 패턴
+
+**개발 서버 실행/종료는 `QUICK_START.md` 또는 `DEVELOPMENT_SERVER_GUIDE.md`를 참고하세요.**
+
+---
+
 ## 📋 목차
 
 1. [프로젝트 구조](#프로젝트-구조)
@@ -571,6 +584,15 @@ const handleSubmit = async (e: React.FormEvent) => {
 
 ---
 
-**마지막 업데이트**: 2025-12-01  
+## 🔗 관련 문서
+
+- **빠른 시작**: `QUICK_START.md` - 개발 서버 실행/종료
+- **개발 서버 가이드**: `DEVELOPMENT_SERVER_GUIDE.md` - 상세 가이드
+- **Firebase 환경 변수 설정**: `FIREBASE_ENV_SETUP.md`
+- **Firebase 인증 설정**: `FIREBASE_AUTH_SETUP.md`
+
+---
+
+**마지막 업데이트**: 2025-01-27  
 **버전**: 1.0.0
 

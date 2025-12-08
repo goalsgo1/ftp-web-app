@@ -10,10 +10,16 @@ import { Badge } from '../../ui/Badge';
 import { SearchInput } from '../../ui/Input';
 import { Select } from '../../ui/Select';
 import { StatCard } from '../../ui/StatCard';
-import { ToastContainer, type Toast } from '../../ui/Toast';
+import { ToastContainer } from '../../ui/Toast';
+import { useToast } from '@/hooks/useToast';
 import { Toggle } from '../../ui/Toggle';
+import { NotificationStats } from '../../ui/NotificationStats';
+import { EmptyState } from '../../ui/EmptyState';
+import { LoadingState } from '../../ui/LoadingState';
+import { ErrorState } from '../../ui/ErrorState';
+import { FeatureTypeBadge } from '../../ui/Badge/FeatureTypeBadge';
 import { onAuthChange, getCurrentUser } from '@/lib/firebase';
-import { getCreatorSettings } from '@/lib/firebase/worldClock';
+import { loadNotificationStats } from '@/lib/utils/notificationStats';
 import { 
   getUserSubscriptions, 
   unsubscribeFromFeature, 
@@ -31,7 +37,7 @@ export default function SubscriptionManagement() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
-  const [toasts, setToasts] = useState<Toast[]>([]);
+  const { toasts, showToast, closeToast } = useToast();
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const [notificationStats, setNotificationStats] = useState<Record<string, { total: number; active: number; inactive: number }>>({});
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -62,38 +68,14 @@ export default function SubscriptionManagement() {
         const data = await getUserSubscriptions(user.uid);
         setSubscriptions(data);
         
-        // 알림 통계 로드
-        const stats: Record<string, { total: number; active: number; inactive: number }> = {};
-        for (const subscription of data) {
-          if (subscription.feature.url?.startsWith('/features/world-clock') && subscription.feature.id && subscription.feature.createdBy) {
-            try {
-              const creatorSettings = await getCreatorSettings(subscription.feature.id, subscription.feature.createdBy);
-              if (creatorSettings && creatorSettings.notifications?.alerts) {
-                const alerts = creatorSettings.notifications.alerts;
-                stats[subscription.feature.id] = {
-                  total: alerts.length,
-                  active: alerts.filter(a => a.active !== false).length,
-                  inactive: alerts.filter(a => a.active === false).length,
-                };
-              } else {
-                stats[subscription.feature.id] = { total: 0, active: 0, inactive: 0 };
-              }
-            } catch (error) {
-              console.error(`알림 통계 로드 실패 (${subscription.feature.id}):`, error);
-              stats[subscription.feature.id] = { total: 0, active: 0, inactive: 0 };
-            }
-          }
-        }
+        // 알림 통계 로드 (구독 목록에서 feature만 추출)
+        const features = data.map(sub => sub.feature);
+        const stats = await loadNotificationStats(features);
         setNotificationStats(stats);
       } catch (err: any) {
         console.error('구독 목록 로드 실패:', err);
         setError(err.message || '구독 목록을 불러오는데 실패했습니다.');
-        setToasts(prev => [...prev, {
-          id: Date.now().toString(),
-          message: err.message || '구독 목록을 불러오는데 실패했습니다.',
-          type: 'error',
-          duration: 4000,
-        }]);
+        showToast(err.message || '구독 목록을 불러오는데 실패했습니다.', 'error', 4000);
       } finally {
         setIsLoading(false);
       }
@@ -109,28 +91,9 @@ export default function SubscriptionManagement() {
     const unsubscribe = subscribeUserSubscriptions(user.uid, async (updatedSubscriptions) => {
       setSubscriptions(updatedSubscriptions);
       
-      // 알림 통계도 다시 로드
-      const stats: Record<string, { total: number; active: number; inactive: number }> = {};
-      for (const subscription of updatedSubscriptions) {
-        if (subscription.feature.url?.startsWith('/features/world-clock') && subscription.feature.id && subscription.feature.createdBy) {
-          try {
-            const creatorSettings = await getCreatorSettings(subscription.feature.id, subscription.feature.createdBy);
-            if (creatorSettings && creatorSettings.notifications?.alerts) {
-              const alerts = creatorSettings.notifications.alerts;
-              stats[subscription.feature.id] = {
-                total: alerts.length,
-                active: alerts.filter(a => a.active !== false).length,
-                inactive: alerts.filter(a => a.active === false).length,
-              };
-            } else {
-              stats[subscription.feature.id] = { total: 0, active: 0, inactive: 0 };
-            }
-          } catch (error) {
-            console.error(`알림 통계 로드 실패 (${subscription.feature.id}):`, error);
-            stats[subscription.feature.id] = { total: 0, active: 0, inactive: 0 };
-          }
-        }
-      }
+      // 알림 통계도 다시 로드 (구독 목록에서 feature만 추출)
+      const features = updatedSubscriptions.map(sub => sub.feature);
+      const stats = await loadNotificationStats(features);
       setNotificationStats(stats);
     });
 
@@ -164,20 +127,10 @@ export default function SubscriptionManagement() {
       const newEnabled = !subscription.notificationEnabled;
       await toggleNotification(user.uid, subscription.featureId, newEnabled);
       
-      setToasts(prev => [...prev, {
-        id: Date.now().toString(),
-        message: `알림이 ${newEnabled ? '활성화' : '비활성화'}되었습니다.`,
-        type: 'success',
-        duration: 2000,
-      }]);
+      showToast(`알림이 ${newEnabled ? '활성화' : '비활성화'}되었습니다.`, 'success', 2000);
     } catch (err: any) {
       console.error('알림 설정 변경 실패:', err);
-      setToasts(prev => [...prev, {
-        id: Date.now().toString(),
-        message: err.message || '알림 설정 변경에 실패했습니다.',
-        type: 'error',
-        duration: 4000,
-      }]);
+      showToast(err.message || '알림 설정 변경에 실패했습니다.', 'error', 4000);
     }
   };
 
@@ -191,25 +144,11 @@ export default function SubscriptionManagement() {
     try {
       await unsubscribeFromFeature(user.uid, subscription.featureId);
       
-      setToasts(prev => [...prev, {
-        id: Date.now().toString(),
-        message: '구독이 취소되었습니다.',
-        type: 'success',
-        duration: 2000,
-      }]);
+      showToast('구독이 취소되었습니다.', 'success', 2000);
     } catch (err: any) {
       console.error('구독 취소 실패:', err);
-      setToasts(prev => [...prev, {
-        id: Date.now().toString(),
-        message: err.message || '구독 취소에 실패했습니다.',
-        type: 'error',
-        duration: 4000,
-      }]);
+      showToast(err.message || '구독 취소에 실패했습니다.', 'error', 4000);
     }
-  };
-
-  const handleCloseToast = (id: string) => {
-    setToasts(prev => prev.filter(toast => toast.id !== id));
   };
 
   // 카테고리 목록 추출
@@ -305,20 +244,10 @@ export default function SubscriptionManagement() {
       </div>
 
       {/* 로딩 상태 */}
-      {isLoading && (
-        <div className="text-center py-12">
-          <p className="text-gray-500 dark:text-gray-400">
-            구독 목록을 불러오는 중...
-          </p>
-        </div>
-      )}
+      {isLoading && <LoadingState message="구독 목록을 불러오는 중..." />}
 
       {/* 에러 상태 */}
-      {error && !isLoading && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 px-4 py-3 rounded-lg">
-          {error}
-        </div>
-      )}
+      {error && !isLoading && <ErrorState message={error} />}
 
       {/* 구독 목록 */}
       {!isLoading && !error && (
@@ -350,15 +279,7 @@ export default function SubscriptionManagement() {
                       </h3>
                       <div className="flex items-center gap-2 flex-wrap">
                         {/* URL 또는 내부 기능 표시 */}
-                        {feature.url?.startsWith('/features/') ? (
-                          <Badge variant="default" className="bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-700">
-                            내부 기능
-                          </Badge>
-                        ) : feature.url ? (
-                          <Badge variant="default" className="bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-700">
-                            외부 URL
-                          </Badge>
-                        ) : null}
+                        <FeatureTypeBadge feature={feature} />
                         <Badge variant="default">
                           {feature.category}
                         </Badge>
@@ -412,19 +333,8 @@ export default function SubscriptionManagement() {
                         </div>
                         {/* 세계시간 기능의 알림 통계 표시 */}
                         {feature.url?.startsWith('/features/world-clock') && feature.id && notificationStats[feature.id] && (
-                          <div className="flex items-center gap-3 text-xs mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-                            <span className="flex items-center gap-1.5 cursor-help" title="전체 알림">
-                              <FiBell size={14} className="text-blue-500" />
-                              <span className="font-semibold text-blue-600 dark:text-blue-400">{notificationStats[feature.id].total}</span>
-                            </span>
-                            <span className="flex items-center gap-1.5 cursor-help" title="활성 알림">
-                              <FiCheckCircle size={14} className="text-green-500" />
-                              <span className="font-semibold text-green-600 dark:text-green-400">{notificationStats[feature.id].active}</span>
-                            </span>
-                            <span className="flex items-center gap-1.5 cursor-help" title="비활성 알림">
-                              <FiClock size={14} className="text-gray-500" />
-                              <span className="font-semibold text-gray-600 dark:text-gray-400">{notificationStats[feature.id].inactive}</span>
-                            </span>
+                          <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                            <NotificationStats stats={notificationStats[feature.id]} />
                           </div>
                         )}
                       </div>
@@ -505,26 +415,20 @@ export default function SubscriptionManagement() {
 
       {/* 빈 목록 상태 */}
       {!isLoading && !error && filteredSubscriptions.length === 0 && (
-        <div className="text-center py-12">
-          <p className="text-gray-500 dark:text-gray-400 mb-4">
-            {searchTerm || filterCategory !== 'all' 
+        <EmptyState
+          message={
+            searchTerm || filterCategory !== 'all' 
               ? '검색 결과가 없습니다.' 
-              : '구독 중인 기능이 없습니다. 기능 목록에서 구독해보세요!'}
-          </p>
-          {!searchTerm && filterCategory === 'all' && (
-            <Button
-              variant="primary"
-              onClick={() => router.push('/#features')}
-              icon={<FiStar size={18} />}
-            >
-              기능 목록에서 구독하기
-            </Button>
-          )}
-        </div>
+              : '구독 중인 기능이 없습니다. 기능 목록에서 구독해보세요!'
+          }
+          actionLabel={!searchTerm && filterCategory === 'all' ? '기능 목록에서 구독하기' : undefined}
+          onAction={!searchTerm && filterCategory === 'all' ? () => router.push('/#features') : undefined}
+          icon={!searchTerm && filterCategory === 'all' ? <FiStar size={48} className="text-gray-400 mx-auto" /> : undefined}
+        />
       )}
 
       {/* 토스트 알림 컨테이너 */}
-      <ToastContainer toasts={toasts} onClose={handleCloseToast} />
+      <ToastContainer toasts={toasts} onClose={closeToast} />
     </div>
   );
 }

@@ -1,87 +1,77 @@
-# 커밋 메시지
+# 📝 커밋 메시지
 
-## 주요 변경사항
+## 제목
 
-### ✨ 새로운 기능
+```
+docs: 활성 사용 문서를 종류별/목적별 폴더 구조로 재구성
+```
 
-1. **Toast 자동 닫기 시간 설정 기능**
-   - 사용자별 Toast 자동 닫기 시간 설정 (1-60초)
-   - 체크박스로 자동 닫기 활성화/비활성화 제어
-   - Firestore에 사용자 설정 저장 및 실시간 동기화
-   - 빈 값 입력 시 기본값(5초)으로 자동 설정
+## 본문
 
-2. **구독자 실시간 동기화**
-   - 생성자의 알림 설정 변경 시 구독자에게 실시간 반영
-   - 토글, 시간대, 알림시간, 알림라벨 변경 시 자동 동기화
-   - "현재" 버튼 클릭 시 즉시 저장하여 구독자에게 반영
+```
+활성 사용 문서들을 docs 폴더로 이동하고 종류별/목적별로 체계적으로 정리
 
-3. **커스텀 TimePicker 컴포넌트**
-   - AM/PM 선택 및 시간/분 스크롤 선택
-   - 다크모드 지원 및 모던한 디자인
-   - 기존 HTML time input 대체
+### 변경 사항
 
-### 🎨 UI/UX 개선
+#### 문서 이동
+- 모든 활성 사용 MD 파일을 docs 폴더로 이동
+  - QUICK_START.md → docs/development-guides/quick-start/
+  - DEVELOPMENT_SERVER_GUIDE.md → docs/development-guides/server-management/
+  - CHECK_RUN_STATUS.md → docs/development-guides/status-check/
+  - DEVELOPMENT_GUIDE.md → docs/development-guides/component-usage/
+  - FIREBASE_ENV_SETUP.md → docs/firebase-setup/environment-variables/
+  - FIREBASE_AUTH_SETUP.md → docs/firebase-setup/authentication/
 
-1. **알림 설정 화면 레이아웃 개선**
-   - Toast 자동 닫기 시간 설정 구역 레이아웃 최적화
-   - 체크박스 크기 및 스타일 개선
-   - Input 필드와 어울리는 디자인
+#### 폴더 구조 생성
+- development-guides/ (개발 가이드)
+  - quick-start/ (빠른 시작)
+  - server-management/ (서버 관리)
+  - status-check/ (상태 확인)
+  - component-usage/ (컴포넌트 사용법)
 
-2. **기능 목록 및 구독 관리 화면 차별화**
-   - 기능 목록: 정렬 옵션, 구독자 수 표시, 통계 카드 개선
-   - 구독 관리: 알림 토글 강조, 구독 날짜 표시, 통계 카드 개선
+- firebase-setup/ (Firebase 설정)
+  - environment-variables/ (환경 변수)
+  - authentication/ (인증 설정)
 
-### 🐛 버그 수정
+#### README 파일 추가
+- 각 폴더에 한글 설명이 포함된 README.md 생성
+- docs/README.md 추가 (docs 폴더 소개)
+- docs/FOLDER_STRUCTURE.md 추가 (폴더 구조 상세 설명)
+- docs/MOVEMENT_SUMMARY.md 추가 (이동 완료 보고서)
 
-1. **Toast 자동 닫기 동작 개선**
-   - 타이핑할 때마다 저장되던 문제 해결 (onBlur에서만 저장)
-   - 명시적 duration 지정 제거하여 사용자 설정 적용
-   - Toast 컴포넌트의 duration 재설정 문제 해결
+#### 문서 인덱스 업데이트
+- docs/DOCUMENTATION_INDEX.md 업데이트 (새 폴더 구조 반영)
+- README.md 업데이트 (새 경로 반영)
 
-2. **알림 발송 로직 수정**
-   - 구독자에게 알림이 발송되지 않던 문제 해결
-   - 구독자의 알림 설정 확인 로직 추가
-
-### 📝 문서 업데이트
-
-- 앱 아이디어 브레인스토밍 메모 추가 (AI 프롬프트 기반 메모장 앱 아이디어)
+### 개선 효과
+- 체계적인 문서 구조로 접근성 향상
+- 각 폴더의 목적이 README로 명확히 설명됨
+- 유지보수성 향상 (관련 문서들이 한 곳에 모임)
+```
 
 ---
 
-## 커밋 메시지
+## 간단 버전 (짧은 커밋 메시지)
 
 ```
-feat: Toast 자동 닫기 설정 및 구독자 실시간 동기화 기능 추가
+docs: 활성 사용 문서를 종류별/목적별 폴더 구조로 재구성
 
-✨ 새로운 기능
-- Toast 자동 닫기 시간 사용자 설정 기능 (1-60초)
-- 체크박스로 자동 닫기 활성화/비활성화 제어
-- 구독자 실시간 동기화 (생성자 설정 변경 시 자동 반영)
-- 커스텀 TimePicker 컴포넌트 추가 (AM/PM 선택, 스크롤 선택)
-
-🎨 UI/UX 개선
-- 알림 설정 화면 레이아웃 최적화
-- 기능 목록 및 구독 관리 화면 차별화
-- 체크박스 및 Input 필드 디자인 개선
-
-🐛 버그 수정
-- Toast 자동 닫기 타이밍 문제 해결 (onBlur에서만 저장)
-- 구독자 알림 발송 로직 수정
-- Toast duration 재설정 문제 해결
-
-📝 문서
-- 앱 아이디어 브레인스토밍 메모 추가
-
-변경된 파일:
-- app/components/features/NotificationSettings/NotificationSettings.tsx
-- app/components/ui/Toast/Toast.tsx
-- app/components/ui/TimePicker/ (신규)
-- app/contexts/ToastContext.tsx (신규)
-- app/lib/firebase/userSettings.ts (신규)
-- app/features/world-clock/page.tsx
-- app/components/features/FeatureList/FeatureList.tsx
-- app/components/features/SubscriptionManagement/SubscriptionManagement.tsx
-- app/lib/firebase/subscriptions.ts
-- app/components/DashboardLayout.tsx
-- docs/app-ideas/앱_아이디어_브레인스토밍.md
+- 모든 활성 사용 MD 파일을 docs 폴더로 이동
+- development-guides와 firebase-setup 폴더로 분류
+- 각 폴더에 README 파일 추가 (한글 설명 포함)
+- 문서 인덱스 및 README 업데이트
 ```
+
+---
+
+## 영어 버전
+
+```
+docs: reorganize active documentation into categorized folder structure
+
+- Move all active MD files to docs folder
+- Organize by category (development-guides, firebase-setup)
+- Add README files to each folder with Korean descriptions
+- Update documentation index and README
+```
+

@@ -1,5 +1,10 @@
 # Firebase 환경 변수 설정 가이드
 
+> **Firebase 기능 사용을 위한 환경 변수 설정**  
+> 로그인, 데이터베이스 등 Firebase 기능을 사용하려면 이 설정이 필수입니다.
+
+---
+
 ## 📋 빠른 설정 가이드
 
 ### 1. Firebase Console에서 설정 값 복사
@@ -85,7 +90,16 @@ npm run dev
 ## 📝 다음 단계
 
 환경 변수 설정이 완료되면:
-1. Firebase Authentication에서 테스트 계정 생성
-2. 로그인 기능 테스트
-3. 회원가입 기능 구현 (선택사항)
+1. **Firebase 인증 활성화**: `FIREBASE_AUTH_SETUP.md` 참고
+2. Firebase Authentication에서 테스트 계정 생성
+3. 로그인 기능 테스트
+4. 회원가입 기능 구현 (선택사항)
+
+---
+
+## 🔗 관련 문서
+
+- **Firebase 인증 설정**: `FIREBASE_AUTH_SETUP.md` - 이메일/비밀번호 인증 활성화
+- **빠른 시작**: `QUICK_START.md` - 개발 서버 실행
+- **실행 상태 확인**: `CHECK_RUN_STATUS.md` - 현재 상태 점검
 

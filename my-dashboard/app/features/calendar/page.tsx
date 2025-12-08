@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { FiCalendar, FiPlus, FiEdit2, FiTrash2, FiChevronLeft, FiChevronRight, FiX } from 'react-icons/fi';
+import { FiCalendar, FiPlus, FiEdit2, FiTrash2, FiChevronLeft, FiChevronRight, FiX, FiGrid, FiList, FiClock } from 'react-icons/fi';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -35,6 +35,7 @@ export default function CalendarPage() {
   
   // 캘린더 상태
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [viewMode, setViewMode] = useState<'month' | 'week' | 'day' | 'year'>('month');
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
@@ -96,14 +97,47 @@ export default function CalendarPage() {
     return () => unsubscribe();
   }, []);
 
-  // 이전 달로 이동
-  const handlePrevMonth = () => {
-    setCurrentDate(new Date(year, month - 1, 1));
+  // 날짜 이동 함수들
+  const handlePrev = () => {
+    switch (viewMode) {
+      case 'year':
+        setCurrentDate(new Date(year - 1, 0, 1));
+        break;
+      case 'month':
+        setCurrentDate(new Date(year, month - 1, 1));
+        break;
+      case 'week':
+        const prevWeek = new Date(currentDate);
+        prevWeek.setDate(prevWeek.getDate() - 7);
+        setCurrentDate(prevWeek);
+        break;
+      case 'day':
+        const prevDay = new Date(currentDate);
+        prevDay.setDate(prevDay.getDate() - 1);
+        setCurrentDate(prevDay);
+        break;
+    }
   };
 
-  // 다음 달로 이동
-  const handleNextMonth = () => {
-    setCurrentDate(new Date(year, month + 1, 1));
+  const handleNext = () => {
+    switch (viewMode) {
+      case 'year':
+        setCurrentDate(new Date(year + 1, 0, 1));
+        break;
+      case 'month':
+        setCurrentDate(new Date(year, month + 1, 1));
+        break;
+      case 'week':
+        const nextWeek = new Date(currentDate);
+        nextWeek.setDate(nextWeek.getDate() + 7);
+        setCurrentDate(nextWeek);
+        break;
+      case 'day':
+        const nextDay = new Date(currentDate);
+        nextDay.setDate(nextDay.getDate() + 1);
+        setCurrentDate(nextDay);
+        break;
+    }
   };
 
   // 오늘로 이동
@@ -149,6 +183,65 @@ export default function CalendarPage() {
              eventDate.getMonth() === date.getMonth() &&
              eventDate.getDate() === date.getDate();
     });
+  };
+
+  // 특정 월의 일정 가져오기
+  const getEventsForMonth = (year: number, month: number) => {
+    return events.filter(event => {
+      const eventDate = new Date(event.date);
+      return eventDate.getFullYear() === year && eventDate.getMonth() === month;
+    });
+  };
+
+  // 특정 주의 일정 가져오기
+  const getEventsForWeek = (startDate: Date) => {
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + 6);
+    return events.filter(event => {
+      const eventDate = new Date(event.date);
+      return eventDate >= startDate && eventDate <= endDate;
+    });
+  };
+
+  // 특정 연도의 일정 가져오기
+  const getEventsForYear = (year: number) => {
+    return events.filter(event => {
+      const eventDate = new Date(event.date);
+      return eventDate.getFullYear() === year;
+    });
+  };
+
+  // 주의 시작일 계산 (일요일)
+  const getWeekStart = (date: Date) => {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = d.getDate() - day;
+    return new Date(d.setDate(diff));
+  };
+
+  // 주의 날짜 배열 생성
+  const getWeekDays = (startDate: Date) => {
+    const days: Date[] = [];
+    for (let i = 0; i < 7; i++) {
+      const day = new Date(startDate);
+      day.setDate(startDate.getDate() + i);
+      days.push(day);
+    }
+    return days;
+  };
+
+  // 연도 뷰를 위한 월별 그리드 생성
+  const getYearMonths = () => {
+    const months: { month: number; date: Date; events: CalendarEvent[] }[] = [];
+    for (let m = 0; m < 12; m++) {
+      const monthDate = new Date(year, m, 1);
+      months.push({
+        month: m,
+        date: monthDate,
+        events: getEventsForMonth(year, m)
+      });
+    }
+    return months;
   };
 
   // 캘린더 그리드 생성
@@ -202,22 +295,76 @@ export default function CalendarPage() {
 
           {/* 캘린더 컨트롤 */}
           <Card>
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+              {/* 뷰 모드 선택 */}
+              <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+                <button
+                  onClick={() => setViewMode('year')}
+                  className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                    viewMode === 'year'
+                      ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                  }`}
+                >
+                  연도
+                </button>
+                <button
+                  onClick={() => setViewMode('month')}
+                  className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                    viewMode === 'month'
+                      ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                  }`}
+                >
+                  월
+                </button>
+                <button
+                  onClick={() => setViewMode('week')}
+                  className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                    viewMode === 'week'
+                      ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                  }`}
+                >
+                  주
+                </button>
+                <button
+                  onClick={() => setViewMode('day')}
+                  className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                    viewMode === 'day'
+                      ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                  }`}
+                >
+                  일
+                </button>
+              </div>
+
+              {/* 날짜 네비게이션 */}
               <div className="flex items-center gap-4">
                 <Button
                   variant="ghost"
-                  onClick={handlePrevMonth}
+                  onClick={handlePrev}
                   icon={<FiChevronLeft size={20} />}
                 />
                 <h2 className="text-2xl font-bold text-gray-900 dark:text-white min-w-[200px] text-center">
-                  {year}년 {month + 1}월
+                  {viewMode === 'year' && `${year}년`}
+                  {viewMode === 'month' && `${year}년 ${month + 1}월`}
+                  {viewMode === 'week' && (() => {
+                    const weekStart = getWeekStart(currentDate);
+                    const weekEnd = new Date(weekStart);
+                    weekEnd.setDate(weekEnd.getDate() + 6);
+                    return `${weekStart.getMonth() + 1}/${weekStart.getDate()} - ${weekEnd.getMonth() + 1}/${weekEnd.getDate()}`;
+                  })()}
+                  {viewMode === 'day' && `${year}년 ${month + 1}월 ${currentDate.getDate()}일`}
                 </h2>
                 <Button
                   variant="ghost"
-                  onClick={handleNextMonth}
+                  onClick={handleNext}
                   icon={<FiChevronRight size={20} />}
                 />
               </div>
+
               <Button
                 variant="secondary"
                 onClick={handleToday}
@@ -226,86 +373,12 @@ export default function CalendarPage() {
               </Button>
             </div>
 
-            {/* 캘린더 그리드 */}
+            {/* 캘린더 뷰 */}
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr>
-                    {weekDays.map((day, index) => (
-                      <th
-                        key={day}
-                        className={`p-3 text-center font-semibold text-sm border border-gray-200 dark:border-gray-700 ${
-                          index === 0 ? 'text-red-600 dark:text-red-400' : 
-                          index === 6 ? 'text-blue-600 dark:text-blue-400' : 
-                          'text-gray-700 dark:text-gray-300'
-                        }`}
-                      >
-                        {day}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {Array.from({ length: Math.ceil(calendarDays.length / 7) }).map((_, weekIndex) => (
-                    <tr key={weekIndex}>
-                      {Array.from({ length: 7 }).map((_, dayIndex) => {
-                        const dayIndexInArray = weekIndex * 7 + dayIndex;
-                        const date = calendarDays[dayIndexInArray];
-                        const isToday = date && 
-                          date.getFullYear() === new Date().getFullYear() &&
-                          date.getMonth() === new Date().getMonth() &&
-                          date.getDate() === new Date().getDate();
-                        const dayEvents = date ? getEventsForDate(date) : [];
-
-                        return (
-                          <td
-                            key={dayIndex}
-                            className={`min-w-[120px] h-24 border border-gray-200 dark:border-gray-700 p-2 align-top ${
-                              !date ? 'bg-gray-50 dark:bg-gray-900/50' : 
-                              'hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer'
-                            } ${
-                              dayIndex === 0 ? 'text-red-600 dark:text-red-400' : 
-                              dayIndex === 6 ? 'text-blue-600 dark:text-blue-400' : 
-                              'text-gray-900 dark:text-white'
-                            }`}
-                            onClick={() => date && handleDateClick(date)}
-                          >
-                            {date && (
-                              <>
-                                <div className={`text-sm font-medium mb-1 ${
-                                  isToday ? 'bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center' : ''
-                                }`}>
-                                  {date.getDate()}
-                                </div>
-                                <div className="space-y-1">
-                                  {dayEvents.slice(0, 3).map(event => (
-                                    <div
-                                      key={event.id}
-                                      className="text-xs px-1 py-0.5 rounded truncate"
-                                      style={{ backgroundColor: event.color || '#3b82f6', color: 'white' }}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleEditEvent(event);
-                                      }}
-                                    >
-                                      {event.title}
-                                    </div>
-                                  ))}
-                                  {dayEvents.length > 3 && (
-                                    <div className="text-xs text-gray-500 dark:text-gray-400">
-                                      +{dayEvents.length - 3}개 더
-                                    </div>
-                                  )}
-                                </div>
-                              </>
-                            )}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              {viewMode === 'year' && <YearView year={year} events={getEventsForYear(year)} onDateClick={handleDateClick} />}
+              {viewMode === 'month' && <MonthView currentDate={currentDate} events={events} onDateClick={handleDateClick} onEventClick={handleEditEvent} />}
+              {viewMode === 'week' && <WeekView currentDate={currentDate} events={getEventsForWeek(getWeekStart(currentDate))} onDateClick={handleDateClick} onEventClick={handleEditEvent} />}
+              {viewMode === 'day' && <DayView date={currentDate} events={getEventsForDate(currentDate)} onDateClick={handleDateClick} onEventClick={handleEditEvent} />}
             </div>
           </Card>
 
@@ -482,6 +555,349 @@ function EventModal({ date, event, onSave, onDelete, onClose }: EventModalProps)
           </div>
         </form>
       </Card>
+    </div>
+  );
+}
+
+// 연도 뷰 컴포넌트
+interface YearViewProps {
+  year: number;
+  events: CalendarEvent[];
+  onDateClick: (date: Date) => void;
+}
+
+function YearView({ year, events, onDateClick }: YearViewProps) {
+  const months = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
+  const today = new Date();
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {months.map((monthName, index) => {
+        const monthDate = new Date(year, index, 1);
+        const monthEvents = events.filter(event => {
+          const eventDate = new Date(event.date);
+          return eventDate.getMonth() === index;
+        });
+        const isCurrentMonth = today.getFullYear() === year && today.getMonth() === index;
+
+        return (
+          <Card
+            key={index}
+            className={`p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${
+              isCurrentMonth ? 'ring-2 ring-blue-500' : ''
+            }`}
+            onClick={() => onDateClick(monthDate)}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-semibold text-gray-900 dark:text-white">{monthName}</h3>
+              <span className="text-sm text-gray-500 dark:text-gray-400">{monthEvents.length}개</span>
+            </div>
+            <div className="space-y-1">
+              {monthEvents.slice(0, 3).map(event => (
+                <div
+                  key={event.id}
+                  className="text-xs px-2 py-1 rounded truncate"
+                  style={{ backgroundColor: event.color || '#3b82f6', color: 'white' }}
+                >
+                  {event.title}
+                </div>
+              ))}
+              {monthEvents.length > 3 && (
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  +{monthEvents.length - 3}개 더
+                </div>
+              )}
+            </div>
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
+
+// 월 뷰 컴포넌트
+interface MonthViewProps {
+  currentDate: Date;
+  events: CalendarEvent[];
+  onDateClick: (date: Date) => void;
+  onEventClick: (event: CalendarEvent) => void;
+}
+
+function MonthView({ currentDate, events, onDateClick, onEventClick }: MonthViewProps) {
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const firstDayOfWeek = firstDay.getDay();
+  const daysInMonth = lastDay.getDate();
+  const weekDays = ['일', '월', '화', '수', '목', '금', '토'];
+
+  const calendarDays: (Date | null)[] = [];
+  for (let i = 0; i < firstDayOfWeek; i++) {
+    calendarDays.push(null);
+  }
+  for (let day = 1; day <= daysInMonth; day++) {
+    calendarDays.push(new Date(year, month, day));
+  }
+
+  const getEventsForDate = (date: Date) => {
+    return events.filter(event => {
+      const eventDate = new Date(event.date);
+      return eventDate.getFullYear() === date.getFullYear() &&
+             eventDate.getMonth() === date.getMonth() &&
+             eventDate.getDate() === date.getDate();
+    });
+  };
+
+  return (
+    <table className="w-full border-collapse">
+      <thead>
+        <tr>
+          {weekDays.map((day, index) => (
+            <th
+              key={day}
+              className={`p-3 text-center font-semibold text-sm border border-gray-200 dark:border-gray-700 ${
+                index === 0 ? 'text-red-600 dark:text-red-400' : 
+                index === 6 ? 'text-blue-600 dark:text-blue-400' : 
+                'text-gray-700 dark:text-gray-300'
+              }`}
+            >
+              {day}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {Array.from({ length: Math.ceil(calendarDays.length / 7) }).map((_, weekIndex) => (
+          <tr key={weekIndex}>
+            {Array.from({ length: 7 }).map((_, dayIndex) => {
+              const dayIndexInArray = weekIndex * 7 + dayIndex;
+              const date = calendarDays[dayIndexInArray];
+              const isToday = date && 
+                date.getFullYear() === new Date().getFullYear() &&
+                date.getMonth() === new Date().getMonth() &&
+                date.getDate() === new Date().getDate();
+              const dayEvents = date ? getEventsForDate(date) : [];
+
+              return (
+                <td
+                  key={dayIndex}
+                  className={`min-w-[120px] h-24 border border-gray-200 dark:border-gray-700 p-2 align-top ${
+                    !date ? 'bg-gray-50 dark:bg-gray-900/50' : 
+                    'hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer'
+                  } ${
+                    dayIndex === 0 ? 'text-red-600 dark:text-red-400' : 
+                    dayIndex === 6 ? 'text-blue-600 dark:text-blue-400' : 
+                    'text-gray-900 dark:text-white'
+                  }`}
+                  onClick={() => date && onDateClick(date)}
+                >
+                  {date && (
+                    <>
+                      <div className={`text-sm font-medium mb-1 ${
+                        isToday ? 'bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center' : ''
+                      }`}>
+                        {date.getDate()}
+                      </div>
+                      <div className="space-y-1">
+                        {dayEvents.slice(0, 3).map(event => (
+                          <div
+                            key={event.id}
+                            className="text-xs px-1 py-0.5 rounded truncate"
+                            style={{ backgroundColor: event.color || '#3b82f6', color: 'white' }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onEventClick(event);
+                            }}
+                          >
+                            {event.title}
+                          </div>
+                        ))}
+                        {dayEvents.length > 3 && (
+                          <div className="text-xs text-gray-500 dark:text-gray-400">
+                            +{dayEvents.length - 3}개 더
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </td>
+              );
+            })}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+// 주 뷰 컴포넌트
+interface WeekViewProps {
+  currentDate: Date;
+  events: CalendarEvent[];
+  onDateClick: (date: Date) => void;
+  onEventClick: (event: CalendarEvent) => void;
+}
+
+function WeekView({ currentDate, events, onDateClick, onEventClick }: WeekViewProps) {
+  const getWeekStart = (date: Date) => {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = d.getDate() - day;
+    return new Date(d.setDate(diff));
+  };
+
+  const weekStart = getWeekStart(currentDate);
+  const weekDays: Date[] = [];
+  for (let i = 0; i < 7; i++) {
+    const day = new Date(weekStart);
+    day.setDate(weekStart.getDate() + i);
+    weekDays.push(day);
+  }
+
+  const weekDaysNames = ['일', '월', '화', '수', '목', '금', '토'];
+  const today = new Date();
+
+  const getEventsForDate = (date: Date) => {
+    return events.filter(event => {
+      const eventDate = new Date(event.date);
+      return eventDate.getFullYear() === date.getFullYear() &&
+             eventDate.getMonth() === date.getMonth() &&
+             eventDate.getDate() === date.getDate();
+    });
+  };
+
+  return (
+    <div className="grid grid-cols-7 gap-2">
+      {weekDays.map((date, index) => {
+        const isToday = date.getFullYear() === today.getFullYear() &&
+                        date.getMonth() === today.getMonth() &&
+                        date.getDate() === today.getDate();
+        const dayEvents = getEventsForDate(date);
+
+        return (
+          <div
+            key={index}
+            className={`border border-gray-200 dark:border-gray-700 rounded-lg p-3 min-h-[400px] ${
+              isToday ? 'bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-500' : 
+              'bg-white dark:bg-gray-800'
+            }`}
+          >
+            <div
+              className={`text-center mb-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 rounded p-1 ${
+                index === 0 ? 'text-red-600 dark:text-red-400' : 
+                index === 6 ? 'text-blue-600 dark:text-blue-400' : 
+                'text-gray-900 dark:text-white'
+              }`}
+              onClick={() => onDateClick(date)}
+            >
+              <div className="text-xs text-gray-500 dark:text-gray-400">{weekDaysNames[index]}</div>
+              <div className={`text-lg font-semibold ${isToday ? 'bg-blue-600 text-white rounded-full w-8 h-8 flex items-center justify-center mx-auto' : ''}`}>
+                {date.getDate()}
+              </div>
+            </div>
+            <div className="space-y-2">
+              {dayEvents.map(event => (
+                <div
+                  key={event.id}
+                  className="text-xs px-2 py-1 rounded cursor-pointer hover:opacity-80"
+                  style={{ backgroundColor: event.color || '#3b82f6', color: 'white' }}
+                  onClick={() => onEventClick(event)}
+                >
+                  <div className="font-medium truncate">{event.title}</div>
+                  {event.description && (
+                    <div className="text-xs opacity-90 truncate mt-0.5">{event.description}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// 일 뷰 컴포넌트
+interface DayViewProps {
+  date: Date;
+  events: CalendarEvent[];
+  onDateClick: (date: Date) => void;
+  onEventClick: (event: CalendarEvent) => void;
+}
+
+function DayView({ date, events, onDateClick, onEventClick }: DayViewProps) {
+  const today = new Date();
+  const isToday = date.getFullYear() === today.getFullYear() &&
+                  date.getMonth() === today.getMonth() &&
+                  date.getDate() === today.getDate();
+
+  const hours = Array.from({ length: 24 }, (_, i) => i);
+
+  const getEventsForHour = (hour: number) => {
+    return events.filter(event => {
+      const eventDate = new Date(event.date);
+      return eventDate.getHours() === hour;
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* 날짜 헤더 */}
+      <div className={`text-center p-4 rounded-lg ${isToday ? 'bg-blue-50 dark:bg-blue-900/20' : 'bg-gray-50 dark:bg-gray-800'}`}>
+        <div className="text-2xl font-bold text-gray-900 dark:text-white">
+          {date.getFullYear()}년 {date.getMonth() + 1}월 {date.getDate()}일
+        </div>
+        <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          {['일', '월', '화', '수', '목', '금', '토'][date.getDay()]}요일
+        </div>
+      </div>
+
+      {/* 시간별 일정 */}
+      <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+        {hours.map(hour => {
+          const hourEvents = getEventsForHour(hour);
+          return (
+            <div
+              key={hour}
+              className="border-b border-gray-200 dark:border-gray-700 p-3 min-h-[80px] hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer"
+              onClick={() => {
+                const newDate = new Date(date);
+                newDate.setHours(hour, 0, 0, 0);
+                onDateClick(newDate);
+              }}
+            >
+              <div className="flex gap-4">
+                <div className="w-16 text-sm text-gray-500 dark:text-gray-400 font-medium">
+                  {hour.toString().padStart(2, '0')}:00
+                </div>
+                <div className="flex-1 space-y-2">
+                  {hourEvents.length > 0 ? (
+                    hourEvents.map(event => (
+                      <div
+                        key={event.id}
+                        className="px-3 py-2 rounded cursor-pointer hover:opacity-80"
+                        style={{ backgroundColor: event.color || '#3b82f6', color: 'white' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEventClick(event);
+                        }}
+                      >
+                        <div className="font-medium">{event.title}</div>
+                        {event.description && (
+                          <div className="text-sm opacity-90 mt-1">{event.description}</div>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-sm text-gray-400 dark:text-gray-500">일정 없음</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
