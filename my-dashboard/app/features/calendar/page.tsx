@@ -97,6 +97,90 @@ export default function CalendarPage() {
     return () => unsubscribe();
   }, []);
 
+  // 샘플 데이터 생성 (개발용)
+  useEffect(() => {
+    const generateSampleEvents = () => {
+      const sampleEvents: CalendarEvent[] = [];
+      const colors = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
+      
+      // 2025년 11월, 12월 / 2026년 1월, 2월
+      const months = [
+        { year: 2025, month: 10 }, // 11월 (0-based)
+        { year: 2025, month: 11 }, // 12월
+        { year: 2026, month: 0 },  // 1월
+        { year: 2026, month: 1 },   // 2월
+      ];
+
+      const 한일목록 = [
+        '프로젝트 회의 참석', '코드 리뷰 완료', '문서 작성 완료', '버그 수정 완료',
+        '기능 개발 완료', '테스트 통과', '배포 완료', '리팩토링 완료',
+        '데이터베이스 설계 완료', 'API 연동 완료', 'UI 디자인 완료', '성능 최적화 완료',
+        '보안 검토 완료', '문서화 완료', '코드 정리 완료', '회의록 작성 완료',
+        '프로토타입 완성', '사용자 피드백 반영 완료', '모니터링 설정 완료', '백업 완료',
+        '인증 시스템 구현 완료', '결제 시스템 연동 완료', '알림 기능 구현 완료', '검색 기능 구현 완료',
+        '다국어 지원 완료', '반응형 디자인 완료', '접근성 개선 완료', 'SEO 최적화 완료',
+      ];
+
+      const 할일목록 = [
+        '프로젝트 회의 준비', '코드 리뷰 작성', '문서 작성하기', '버그 수정하기',
+        '기능 개발하기', '테스트 작성하기', '배포 준비하기', '리팩토링하기',
+        '데이터베이스 설계하기', 'API 연동하기', 'UI 디자인하기', '성능 최적화하기',
+        '보안 검토하기', '문서화하기', '코드 정리하기', '회의록 작성하기',
+        '프로토타입 만들기', '사용자 피드백 수집하기', '모니터링 설정하기', '백업하기',
+        '인증 시스템 구현하기', '결제 시스템 연동하기', '알림 기능 구현하기', '검색 기능 구현하기',
+        '다국어 지원하기', '반응형 디자인하기', '접근성 개선하기', 'SEO 최적화하기',
+      ];
+
+      months.forEach(({ year, month }) => {
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        
+        // 한일 50개 생성
+        for (let i = 0; i < 50; i++) {
+          const day = Math.floor(Math.random() * daysInMonth) + 1;
+          const hour = Math.floor(Math.random() * 12) + 9; // 9시~20시
+          const minute = Math.floor(Math.random() * 4) * 15; // 0, 15, 30, 45분
+          
+          const date = new Date(year, month, day, hour, minute);
+          const title = 한일목록[Math.floor(Math.random() * 한일목록.length)];
+          
+          sampleEvents.push({
+            id: `done_${year}_${month}_${i}_${Date.now()}_${Math.random()}`,
+            title: `✅ ${title}`,
+            date,
+            description: `${year}년 ${month + 1}월 ${day}일 완료한 작업`,
+            color: colors[2], // 초록색 (완료)
+          });
+        }
+
+        // 할일 50개 생성
+        for (let i = 0; i < 50; i++) {
+          const day = Math.floor(Math.random() * daysInMonth) + 1;
+          const hour = Math.floor(Math.random() * 12) + 9; // 9시~20시
+          const minute = Math.floor(Math.random() * 4) * 15; // 0, 15, 30, 45분
+          
+          const date = new Date(year, month, day, hour, minute);
+          const title = 할일목록[Math.floor(Math.random() * 할일목록.length)];
+          
+          sampleEvents.push({
+            id: `todo_${year}_${month}_${i}_${Date.now()}_${Math.random()}`,
+            title: `📋 ${title}`,
+            date,
+            description: `${year}년 ${month + 1}월 ${day}일 예정된 작업`,
+            color: colors[0], // 파란색 (할일)
+          });
+        }
+      });
+
+      return sampleEvents;
+    };
+
+    // 샘플 데이터가 없을 때만 생성
+    if (events.length === 0) {
+      const sampleEvents = generateSampleEvents();
+      setEvents(sampleEvents);
+    }
+  }, []); // 빈 배열로 한 번만 실행
+
   // 날짜 이동 함수들
   const handlePrev = () => {
     switch (viewMode) {
