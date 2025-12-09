@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { FiCalendar, FiPlus, FiEdit2, FiTrash2, FiChevronLeft, FiChevronRight, FiX, FiGrid, FiList, FiClock, FiTag, FiCheckCircle, FiCircle, FiMinus, FiSquare, FiSearch, FiChevronDown, FiChevronUp, FiUpload, FiInfo } from 'react-icons/fi';
+import { FiCalendar, FiPlus, FiEdit2, FiTrash2, FiChevronLeft, FiChevronRight, FiX, FiGrid, FiList, FiClock, FiTag, FiCheckCircle, FiCircle, FiMinus, FiSquare, FiSearch, FiChevronDown, FiChevronUp, FiUpload, FiDownload, FiInfo } from 'react-icons/fi';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -69,6 +69,8 @@ export default function CalendarPage() {
   const [isBulkActionsOpen, setIsBulkActionsOpen] = useState(false); // 일괄 작업 패널 열림/닫힘 상태
   const [isImportModalOpen, setIsImportModalOpen] = useState(false); // 가져오기 모달 열림/닫힘 상태
   const [importText, setImportText] = useState<string>(''); // 가져오기용 텍스트
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false); // 내보내기 모달 열림/닫힘 상태
+  const [exportText, setExportText] = useState<string>(''); // 내보내기용 텍스트
   const [isMealOrderEnabled, setIsMealOrderEnabled] = useState<boolean>(false); // 식단 정렬 옵션 활성화 여부
   const [isMealInfoModalOpen, setIsMealInfoModalOpen] = useState<boolean>(false); // 식단 정보 모달 열림/닫힘 상태
 
@@ -367,6 +369,99 @@ export default function CalendarPage() {
       console.error('일정 가져오기 실패:', error);
       alert('일정 가져오기에 실패했습니다.');
     }
+  };
+
+  // 캘린더 이벤트를 텍스트 형식으로 변환
+  const formatEventsToText = (eventsToExport: CalendarEvent[]): string => {
+    // 날짜순으로 정렬
+    const sortedEvents = [...eventsToExport].sort((a, b) => {
+      return new Date(a.date).getTime() - new Date(b.date).getTime();
+    });
+
+    const lines: string[] = [];
+
+    sortedEvents.forEach(event => {
+      const date = new Date(event.date);
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const dateStr = `${year}-${month}-${day}`;
+
+      // 제목, 태그, 상태 조합
+      let line = dateStr;
+      
+      if (event.title) {
+        line += ` ${event.title}`;
+      }
+
+      // 태그 추가
+      if (event.tags && event.tags.length > 0) {
+        event.tags.forEach(tag => {
+          line += ` #${tag}`;
+        });
+      }
+
+      // 상태 추가
+      if (event.status) {
+        const statusMap: Record<EventStatus, string> = {
+          'todo': '[todo]',
+          'in_progress': '[in_progress]',
+          'done': '[done]'
+        };
+        line += ` ${statusMap[event.status]}`;
+      }
+
+      lines.push(line);
+
+      // 설명 추가 (들여쓰기)
+      if (event.description) {
+        const descriptionLines = event.description.split('\n');
+        descriptionLines.forEach(descLine => {
+          if (descLine.trim()) {
+            lines.push(`  ${descLine.trim()}`);
+          }
+        });
+      }
+    });
+
+    return lines.join('\n');
+  };
+
+  // 내보내기 처리
+  const handleExport = () => {
+    if (events.length === 0) {
+      alert('내보낼 일정이 없습니다.');
+      return;
+    }
+
+    // 전체 캘린더 내역을 텍스트로 변환
+    const exportText = formatEventsToText(events);
+    setExportText(exportText);
+    setIsExportModalOpen(true);
+  };
+
+  // 클립보드에 복사
+  const handleCopyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(exportText);
+      alert('클립보드에 복사되었습니다.');
+    } catch (error) {
+      console.error('클립보드 복사 실패:', error);
+      alert('클립보드 복사에 실패했습니다.');
+    }
+  };
+
+  // 파일로 다운로드
+  const handleDownloadFile = () => {
+    const blob = new Blob([exportText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `calendar-export-${new Date().toISOString().split('T')[0]}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   // 일정 수정
@@ -1265,6 +1360,13 @@ export default function CalendarPage() {
                 >
                   가져오기
                 </Button>
+                <Button
+                  variant="secondary"
+                  onClick={handleExport}
+                  icon={<FiDownload size={18} />}
+                >
+                  내보내기
+                </Button>
               </div>
               </div>
             </div>
@@ -1871,6 +1973,19 @@ export default function CalendarPage() {
             />
           )}
 
+          {/* 내보내기 모달 */}
+          {isExportModalOpen && (
+            <ExportModal
+              exportText={exportText}
+              onCopy={handleCopyToClipboard}
+              onDownload={handleDownloadFile}
+              onClose={() => {
+                setIsExportModalOpen(false);
+                setExportText('');
+              }}
+            />
+          )}
+
           {isMealInfoModalOpen && (
             <MealInfoModal
               onClose={() => setIsMealInfoModalOpen(false)}
@@ -1948,6 +2063,79 @@ function ImportModal({ importText, onImportTextChange, onImport, onClose }: Impo
             className={!importText.trim() ? 'opacity-50 cursor-not-allowed' : ''}
           >
             가져오기
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// 내보내기 모달 컴포넌트
+interface ExportModalProps {
+  exportText: string;
+  onCopy: () => void;
+  onDownload: () => void;
+  onClose: () => void;
+}
+
+function ExportModal({ exportText, onCopy, onDownload, onClose }: ExportModalProps) {
+  return (
+    <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50 p-4">
+      <Card className="w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white">일정 내보내기</h3>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+          >
+            <FiX size={20} className="text-gray-500 dark:text-gray-400" />
+          </button>
+        </div>
+
+        <div className="p-6 flex-1 overflow-y-auto">
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                내보낼 일정 텍스트 (전체 캘린더 내역)
+              </label>
+              <textarea
+                value={exportText}
+                readOnly
+                className="w-full h-64 p-4 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white font-mono text-sm resize-none"
+              />
+            </div>
+
+            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+              <h4 className="text-sm font-semibold text-green-900 dark:text-green-300 mb-2">내보내기 옵션:</h4>
+              <ul className="text-xs text-green-800 dark:text-green-400 space-y-1 list-disc list-inside">
+                <li>클립보드 복사: 텍스트를 클립보드에 복사합니다</li>
+                <li>파일 다운로드: 텍스트 파일로 다운로드합니다</li>
+                <li>이 형식은 가져오기 기능과 호환됩니다</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 dark:border-gray-700">
+          <Button
+            variant="ghost"
+            onClick={onClose}
+          >
+            닫기
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={onCopy}
+            icon={<FiUpload size={18} />}
+          >
+            클립보드 복사
+          </Button>
+          <Button
+            variant="primary"
+            onClick={onDownload}
+            icon={<FiDownload size={18} />}
+          >
+            파일 다운로드
           </Button>
         </div>
       </Card>
