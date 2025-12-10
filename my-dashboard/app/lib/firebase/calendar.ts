@@ -29,6 +29,8 @@ export interface CalendarEvent {
   tags?: string[]; // 태그 배열
   status?: EventStatus; // 상태 (해야할일, 하는중, 했던일)
   recurringGroupId?: string; // 반복 일정 그룹 ID (같은 그룹의 일정들은 함께 수정/삭제됨)
+  orderIndex?: number; // 순서 인덱스 (식단 옵션이 비활성화일 때 드래그로 순서 변경)
+  mealOrderIndex?: number; // 식단 옵션이 활성화일 때 순서 인덱스
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -61,6 +63,8 @@ export const addCalendarEvent = async (
       tags: event.tags || [],
       status: event.status || null, // 상태가 없으면 null
       recurringGroupId: event.recurringGroupId || null,
+      orderIndex: event.orderIndex ?? null, // orderIndex 추가
+      mealOrderIndex: event.mealOrderIndex ?? null, // mealOrderIndex 추가
       createdAt: Timestamp.now(),
       updatedAt: Timestamp.now(),
     });
@@ -160,6 +164,8 @@ export const updateCalendarEvent = async (
       }
     }
     if (event.color !== undefined) updateData.color = event.color;
+    if (event.orderIndex !== undefined) updateData.orderIndex = event.orderIndex;
+    if (event.mealOrderIndex !== undefined) updateData.mealOrderIndex = event.mealOrderIndex;
 
     // 같은 그룹의 일정들도 함께 수정
     if (updateGroup && existingEvent.recurringGroupId) {
@@ -327,6 +333,7 @@ export interface CalendarSettings {
   featureId: string;
   userId: string;
   mealOrderEnabled?: boolean; // 식단 정렬 옵션 활성화 여부
+  maxEventsDisplay?: number; // 펼치지 않았을 때 표시할 최대 일정 개수
   updatedAt?: Date;
 }
 
@@ -355,6 +362,7 @@ export const getCalendarSettings = async (
       featureId: data.featureId,
       userId: data.userId,
       mealOrderEnabled: data.mealOrderEnabled || false,
+      maxEventsDisplay: data.maxEventsDisplay || 3,
       updatedAt: data.updatedAt?.toDate(),
     };
   } catch (error) {
@@ -391,12 +399,17 @@ export const saveCalendarSettings = async (
       updateData.mealOrderEnabled = settings.mealOrderEnabled;
     }
     
+    if (settings.maxEventsDisplay !== undefined) {
+      updateData.maxEventsDisplay = settings.maxEventsDisplay;
+    }
+    
     if (querySnapshot.empty) {
       // 새로 생성
       await addDoc(collection(db, 'calendarSettings'), {
         userId,
         featureId,
         mealOrderEnabled: settings.mealOrderEnabled || false,
+        maxEventsDisplay: settings.maxEventsDisplay || 3,
         updatedAt: Timestamp.now(),
       });
     } else {

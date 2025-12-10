@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useState } from 'react';
+import { ReactNode, useState, useEffect } from 'react';
 import { FiChevronLeft } from 'react-icons/fi';
 import { PhonePreview } from '../preview';
 
@@ -13,7 +13,21 @@ export const PageLayout = ({
   children, 
   withPreview = true 
 }: PageLayoutProps) => {
-  const [isPreviewVisible, setIsPreviewVisible] = useState(true);
+  // localStorage에서 저장된 상태를 불러오거나 기본값 false 사용
+  const [isPreviewVisible, setIsPreviewVisible] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('mobilePreviewVisible');
+      return saved === 'true';
+    }
+    return false;
+  });
+
+  // 상태가 변경될 때마다 localStorage에 저장
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('mobilePreviewVisible', String(isPreviewVisible));
+    }
+  }, [isPreviewVisible]);
 
   if (!withPreview) {
     return <div>{children}</div>;

@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { FiCalendar, FiPlus, FiEdit2, FiTrash2, FiChevronLeft, FiChevronRight, FiX, FiGrid, FiList, FiClock, FiTag, FiCheckCircle, FiCircle, FiMinus, FiSquare, FiSearch, FiChevronDown, FiChevronUp, FiUpload, FiDownload, FiInfo } from 'react-icons/fi';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Toggle } from '@/components/ui/Toggle';
+import { TimePicker } from '@/components/ui/TimePicker/TimePicker';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { DashboardLayout } from '@/components/layout';
 import { PageLayout } from '@/components/layout';
@@ -36,6 +37,8 @@ interface CalendarEvent {
   tags?: string[]; // 태그 배열
   status?: EventStatus; // 상태 (해야할일, 하는중, 했던일)
   recurringGroupId?: string; // 반복 일정 그룹 ID
+  orderIndex?: number; // 순서 인덱스 (식단 옵션이 비활성화일 때)
+  mealOrderIndex?: number; // 식단 옵션이 활성화일 때 순서 인덱스
 }
 
 export default function CalendarPage() {
@@ -71,8 +74,13 @@ export default function CalendarPage() {
   const [importText, setImportText] = useState<string>(''); // 가져오기용 텍스트
   const [isExportModalOpen, setIsExportModalOpen] = useState(false); // 내보내기 모달 열림/닫힘 상태
   const [exportText, setExportText] = useState<string>(''); // 내보내기용 텍스트
+  const [exportFileName, setExportFileName] = useState<string>('calendar-export.txt'); // 내보내기 파일명
+  const [expandedMonths, setExpandedMonths] = useState<Set<number>>(new Set()); // 연도 뷰에서 펼쳐진 월들
+  const [isYearSelectModalOpen, setIsYearSelectModalOpen] = useState<boolean>(false); // 연도 선택 모달 열림/닫힘 상태
   const [isMealOrderEnabled, setIsMealOrderEnabled] = useState<boolean>(false); // 식단 정렬 옵션 활성화 여부
   const [isMealInfoModalOpen, setIsMealInfoModalOpen] = useState<boolean>(false); // 식단 정보 모달 열림/닫힘 상태
+  const [showAddEventButtons, setShowAddEventButtons] = useState<boolean>(false); // 일정 추가 버튼 표시 여부
+  const [maxEventsDisplay, setMaxEventsDisplay] = useState<number>(3); // 펼치지 않았을 때 표시할 최대 일정 개수
 
   // 현재 월의 첫 날과 마지막 날 계산
   const year = currentDate.getFullYear();
@@ -147,6 +155,8 @@ export default function CalendarPage() {
           tags: event.tags || [],
           status: event.status || undefined,
           recurringGroupId: event.recurringGroupId || undefined,
+          orderIndex: event.orderIndex,
+          mealOrderIndex: event.mealOrderIndex,
         }));
         setEvents(convertedEvents);
       } catch (error) {
@@ -166,6 +176,9 @@ export default function CalendarPage() {
           color: event.color,
           tags: event.tags || [],
           status: event.status || undefined,
+          recurringGroupId: event.recurringGroupId || undefined,
+          orderIndex: event.orderIndex,
+          mealOrderIndex: event.mealOrderIndex,
         }));
       setEvents(convertedEvents);
     });
@@ -184,6 +197,7 @@ export default function CalendarPage() {
         const settings = await getCalendarSettings(user.uid, featureId);
         if (settings) {
           setIsMealOrderEnabled(settings.mealOrderEnabled || false);
+          setMaxEventsDisplay(settings.maxEventsDisplay || 3);
         }
       } catch (error) {
         console.error('캘린더 설정 로드 실패:', error);
@@ -203,6 +217,7 @@ export default function CalendarPage() {
       try {
         await saveCalendarSettings(user.uid, featureId, {
           mealOrderEnabled: isMealOrderEnabled,
+          maxEventsDisplay: maxEventsDisplay,
         });
       } catch (error) {
         console.error('캘린더 설정 저장 실패:', error);
@@ -277,6 +292,31 @@ export default function CalendarPage() {
     setEditingEvent(null);
   };
 
+  // 월로 이동
+  const handleMonthClick = (monthIndex: number) => {
+    setCurrentDate(new Date(year, monthIndex, 1));
+    setViewMode('month');
+  };
+
+  // 주로 이동
+  const handleWeekClick = (weekStartDate: Date) => {
+    setCurrentDate(weekStartDate);
+    setViewMode('week');
+  };
+
+  // 일 상세 화면으로 이동
+  const handleDayView = (date: Date) => {
+    setCurrentDate(date);
+    setViewMode('day');
+  };
+
+  // 일정 추가 (주 뷰용)
+  const handleAddEventInWeek = (date: Date) => {
+    setSelectedDate(date);
+    setIsEventModalOpen(true);
+    setEditingEvent(null);
+  };
+
   // 일정 추가
   const handleAddEvent = async (event: Omit<CalendarEvent, 'id'>) => {
     if (!user) {
@@ -285,6 +325,151 @@ export default function CalendarPage() {
     }
 
     try {
+      // 시간이 없는 일정인지 확인 (시간이 00:00이면 시간 없는 일정)
+      const eventDate = new Date(event.date);
+      const isEventWithoutTime = eventDate.getHours() === 0 && eventDate.getMinutes() === 0;
+      
+      let orderIndex: number | undefined = undefined;
+      let mealOrderIndex: number | undefined = undefined;
+      
+      // 시간이 없는 일정인 경우, 같은 날짜의 모든 시간 없는 일정들의 orderIndex 재계산
+      if (isEventWithoutTime) {
+        // 같은 날짜의 시간 없는 일정들 가져오기
+        const sameDateEvents = getEventsForDate(event.date).filter(e => {
+          const eDate = new Date(e.date);
+          return eDate.getHours() === 0 && eDate.getMinutes() === 0;
+        });
+        
+        // 새로 추가할 일정도 포함시키기 위해 임시 이벤트 생성
+        const newEvent: CalendarEvent = {
+          id: 'temp',
+          title: event.title,
+          date: event.date,
+          description: event.description,
+          color: event.color,
+          tags: event.tags || [],
+          status: event.status,
+          orderIndex: undefined,
+          mealOrderIndex: undefined,
+        };
+        const allEvents = [...sameDateEvents, newEvent];
+        
+        // 정렬 함수 (식단 옵션에 따라)
+        const sortEventsForOrder = (events: CalendarEvent[], useMealOrder: boolean): CalendarEvent[] => {
+          return [...events].sort((a, b) => {
+            if (useMealOrder) {
+              const hasDinnerEvent = events.some(e => {
+                const hasDinnerTag = e.tags?.includes('저녁') || false;
+                const titleLower = e.title.toLowerCase();
+                return hasDinnerTag || titleLower.includes('저녁');
+              });
+              
+              const getEventTypePriority = (e: CalendarEvent): number => {
+                const hasBreakfastTag = e.tags?.includes('아침') || false;
+                const hasLunchTag = e.tags?.includes('점심') || false;
+                const hasDinnerTag = e.tags?.includes('저녁') || false;
+                const hasCompanyDinnerTag = e.tags?.includes('회식') || false;
+                const hasOtherTag = e.tags?.includes('기타') || false;
+                const titleLower = e.title.toLowerCase();
+                if (hasBreakfastTag || titleLower.includes('아침')) return 1;
+                if (hasLunchTag || titleLower.includes('점심')) return 2;
+                if (hasDinnerTag || titleLower.includes('저녁')) return 3;
+                if (hasCompanyDinnerTag || titleLower.includes('회식')) return hasDinnerEvent ? 4 : 3;
+                if (hasOtherTag || titleLower.includes('기타')) return 5;
+                return 6;
+              };
+              
+              const priorityA = getEventTypePriority(a);
+              const priorityB = getEventTypePriority(b);
+              
+              if (priorityA !== priorityB) {
+                return priorityA - priorityB;
+              }
+              
+              // 같은 우선순위 내에서는 기존 mealOrderIndex로 정렬 (없으면 뒤로)
+              const orderA = a.mealOrderIndex ?? Infinity;
+              const orderB = b.mealOrderIndex ?? Infinity;
+              if (orderA !== orderB) {
+                return orderA - orderB;
+              }
+            } else {
+              // 식단 옵션이 꺼져 있을 때: orderIndex로 정렬
+              const orderA = a.orderIndex ?? Infinity;
+              const orderB = b.orderIndex ?? Infinity;
+              if (orderA !== orderB) {
+                return orderA - orderB;
+              }
+            }
+            
+            // 같은 우선순위이고 orderIndex도 같으면 0 반환 (순서 유지)
+            return 0;
+          });
+        };
+        
+        // 식단 옵션 켜짐: mealOrderIndex 계산
+        if (isMealOrderEnabled) {
+          const sortedEvents = sortEventsForOrder(allEvents, true);
+          const newEventIndex = sortedEvents.findIndex(e => e.id === 'temp');
+          
+          if (newEventIndex !== -1) {
+            mealOrderIndex = newEventIndex;
+            
+            // 기존 일정들의 mealOrderIndex도 재계산하여 업데이트
+            const updatePromises = sortedEvents
+              .map((e, index) => {
+                if (e.id === 'temp') {
+                  return Promise.resolve();
+                }
+                if (e.mealOrderIndex !== index) {
+                  return handleUpdateEvent(e.id!, {
+                    title: e.title,
+                    date: e.date,
+                    description: e.description,
+                    color: e.color,
+                    tags: e.tags || [],
+                    status: e.status,
+                    mealOrderIndex: index,
+                  } as any);
+                }
+                return Promise.resolve();
+              });
+            
+            await Promise.all(updatePromises);
+          }
+        }
+        
+        // 식단 옵션 꺼짐: orderIndex 계산
+        const sortedEvents = sortEventsForOrder(allEvents, false);
+        const newEventIndex = sortedEvents.findIndex(e => e.id === 'temp');
+        
+        if (newEventIndex !== -1) {
+          orderIndex = newEventIndex;
+          
+          // 기존 일정들의 orderIndex도 재계산하여 업데이트
+          const updatePromises = sortedEvents
+            .map((e, index) => {
+              if (e.id === 'temp') {
+                return Promise.resolve();
+              }
+              if (e.orderIndex !== index) {
+                return handleUpdateEvent(e.id!, {
+                  title: e.title,
+                  date: e.date,
+                  description: e.description,
+                  color: e.color,
+                  tags: e.tags || [],
+                  status: e.status,
+                  orderIndex: index,
+                } as any);
+              }
+              return Promise.resolve();
+            });
+          
+          await Promise.all(updatePromises);
+        }
+      }
+      
+      // 올바른 orderIndex/mealOrderIndex로 일정 추가
       await addCalendarEvent({
         featureId,
         title: event.title,
@@ -293,7 +478,10 @@ export default function CalendarPage() {
         color: event.color,
         tags: event.tags || [],
         status: event.status || 'todo',
+        orderIndex: orderIndex,
+        mealOrderIndex: mealOrderIndex,
       });
+      
       // 실시간 업데이트로 자동 반영되므로 여기서는 모달만 닫음
       setIsEventModalOpen(false);
       setSelectedDate(null);
@@ -429,15 +617,44 @@ export default function CalendarPage() {
 
   // 내보내기 처리
   const handleExport = () => {
-    if (events.length === 0) {
+    // 현재 보기 모드에 따라 필터링된 이벤트 가져오기
+    let filteredEvents: CalendarEvent[] = [];
+    let exportFileName = 'calendar-export';
+
+    switch (viewMode) {
+      case 'month':
+        filteredEvents = getEventsForMonth(year, month);
+        exportFileName = `calendar-export-${year}-${String(month + 1).padStart(2, '0')}.txt`;
+        break;
+      case 'week':
+        const weekStart = getWeekStart(currentDate);
+        filteredEvents = getEventsForWeek(weekStart);
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekEnd.getDate() + 6);
+        exportFileName = `calendar-export-${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}_to_${weekEnd.getFullYear()}-${String(weekEnd.getMonth() + 1).padStart(2, '0')}-${String(weekEnd.getDate()).padStart(2, '0')}.txt`;
+        break;
+      case 'day':
+        filteredEvents = getEventsForDate(currentDate);
+        exportFileName = `calendar-export-${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}.txt`;
+        break;
+      default:
+        // year 모드나 기타 경우 전체 이벤트
+        filteredEvents = events;
+        exportFileName = `calendar-export-${new Date().toISOString().split('T')[0]}.txt`;
+    }
+
+    if (filteredEvents.length === 0) {
       alert('내보낼 일정이 없습니다.');
       return;
     }
 
-    // 전체 캘린더 내역을 텍스트로 변환
-    const exportText = formatEventsToText(events);
+    // 필터링된 이벤트를 텍스트로 변환
+    const exportText = formatEventsToText(filteredEvents);
     setExportText(exportText);
     setIsExportModalOpen(true);
+    
+    // 파일명을 상태로 저장 (다운로드 시 사용)
+    setExportFileName(exportFileName);
   };
 
   // 클립보드에 복사
@@ -457,7 +674,7 @@ export default function CalendarPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `calendar-export-${new Date().toISOString().split('T')[0]}.txt`;
+    link.download = exportFileName;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -472,7 +689,7 @@ export default function CalendarPage() {
   };
 
   // 일정 수정 저장
-  const handleUpdateEvent = async (eventId: string, event: Omit<CalendarEvent, 'id'>) => {
+  const handleUpdateEvent = async (eventId: string, event: Omit<CalendarEvent, 'id' | 'userId' | 'featureId' | 'createdAt' | 'updatedAt'>) => {
     if (!user) {
       console.error('로그인이 필요합니다.');
       return;
@@ -498,6 +715,8 @@ export default function CalendarPage() {
         color: event.color,
         tags: event.tags || [],
         status: event.status, // undefined일 수 있음 (상태 사용 안 함)
+        orderIndex: (event as any).orderIndex, // orderIndex 포함
+        mealOrderIndex: (event as any).mealOrderIndex, // mealOrderIndex 포함
       }, updateGroup);
       
       // 실시간 업데이트로 자동 반영되므로 여기서는 모달만 닫음
@@ -1009,6 +1228,65 @@ export default function CalendarPage() {
       });
   };
 
+  // 특정 주의 모든 태그 추출 (태그와 개수 함께 반환)
+  const getTagsForWeek = (startDate: Date): Array<{ tag: string; count: number }> => {
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + 6);
+    
+    const weekEvents = events.filter(event => {
+      const eventDate = new Date(event.date);
+      return eventDate >= startDate && eventDate <= endDate;
+    });
+    
+    const tagCountMap = new Map<string, number>();
+    weekEvents.forEach(event => {
+      if (event.tags && event.tags.length > 0) {
+        event.tags.forEach(tag => {
+          tagCountMap.set(tag, (tagCountMap.get(tag) || 0) + 1);
+        });
+      }
+    });
+    
+    return Array.from(tagCountMap.entries())
+      .map(([tag, count]) => ({ tag, count }))
+      .sort((a, b) => {
+        // 개수 내림차순, 같으면 태그명 오름차순
+        if (b.count !== a.count) {
+          return b.count - a.count;
+        }
+        return a.tag.localeCompare(b.tag);
+      });
+  };
+
+  // 특정 날짜의 모든 태그 추출 (태그와 개수 함께 반환)
+  const getTagsForDay = (date: Date): Array<{ tag: string; count: number }> => {
+    const dayEvents = events.filter(event => {
+      const eventDate = new Date(event.date);
+      return eventDate.getFullYear() === date.getFullYear() &&
+             eventDate.getMonth() === date.getMonth() &&
+             eventDate.getDate() === date.getDate();
+    });
+    
+    const tagCountMap = new Map<string, number>();
+    dayEvents.forEach(event => {
+      if (event.tags && event.tags.length > 0) {
+        event.tags.forEach(tag => {
+          tagCountMap.set(tag, (tagCountMap.get(tag) || 0) + 1);
+        });
+      }
+    });
+    
+    return Array.from(tagCountMap.entries())
+      .map(([tag, count]) => ({ tag, count }))
+      .sort((a, b) => {
+        // 개수 내림차순, 같으면 태그명 오름차순
+        if (b.count !== a.count) {
+          return b.count - a.count;
+        }
+        return a.tag.localeCompare(b.tag);
+      });
+  };
+
   // 특정 월의 상태별 통계
   const getStatusStatsForMonth = (year: number, month: number) => {
     const monthEvents = events.filter(event => {
@@ -1278,7 +1556,11 @@ export default function CalendarPage() {
                   icon={<FiChevronLeft size={20} />}
                 />
                 <div className="flex items-center gap-3 min-w-[200px]">
-                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white text-center">
+                  <h2 
+                    onClick={() => setIsYearSelectModalOpen(true)}
+                    className="text-2xl font-bold text-gray-900 dark:text-white text-center cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                    title="연도 선택"
+                  >
                     {viewMode === 'year' && `${year}년`}
                     {viewMode === 'month' && `${year}년 ${month + 1}월`}
                     {viewMode === 'week' && (() => {
@@ -1347,6 +1629,20 @@ export default function CalendarPage() {
                     <FiInfo size={18} />
                   </button>
                 </div>
+                {/* 일정 추가 버튼 표시 옵션 */}
+                {(viewMode === 'month' || viewMode === 'week' || viewMode === 'day') && (
+                  <div className="flex items-center gap-1">
+                    <label className="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={showAddEventButtons}
+                        onChange={(e) => setShowAddEventButtons(e.target.checked)}
+                        className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                      />
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">일정 추가 버튼</span>
+                    </label>
+                  </div>
+                )}
                 <Button
                   variant="secondary"
                   onClick={handleToday}
@@ -1458,15 +1754,24 @@ export default function CalendarPage() {
                 </div>
               </div>
 
-              {/* 태그 필터 (월 뷰일 때만 표시) */}
-              {viewMode === 'month' && (() => {
-                const monthTags = getTagsForMonth(year, month);
-                return monthTags.length > 0 && (
+              {/* 태그 필터 (월/주/일 뷰일 때 표시) */}
+              {(() => {
+                let tags: Array<{ tag: string; count: number }> = [];
+                if (viewMode === 'month') {
+                  tags = getTagsForMonth(year, month);
+                } else if (viewMode === 'week') {
+                  const weekStart = getWeekStart(currentDate);
+                  tags = getTagsForWeek(weekStart);
+                } else if (viewMode === 'day') {
+                  tags = getTagsForDay(currentDate);
+                }
+                
+                return tags.length > 0 && (
                   <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-gray-200 dark:border-gray-700">
                     <FiTag size={14} className="text-gray-500 dark:text-gray-400 flex-shrink-0" />
                     <span className="text-xs font-semibold text-gray-600 dark:text-gray-400 whitespace-nowrap">태그:</span>
                     <div className="flex flex-wrap gap-1.5">
-                      {monthTags.map(({ tag, count }) => (
+                      {tags.map(({ tag, count }) => (
                         <button
                           key={tag}
                           onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
@@ -1837,6 +2142,56 @@ export default function CalendarPage() {
                       </Button>
                     </div>
 
+                    {/* 표시할 항목 수 설정 섹션 */}
+                    <div className="flex flex-col gap-2 border-t border-blue-200 dark:border-blue-700 pt-3">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">표시할 항목 수:</span>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            min="1"
+                            max="20"
+                            value={maxEventsDisplay}
+                            onChange={(e) => {
+                              const value = parseInt(e.target.value);
+                              if (!isNaN(value) && value >= 1 && value <= 20) {
+                                setMaxEventsDisplay(value);
+                              }
+                            }}
+                            size="sm"
+                            className="w-20"
+                          />
+                          <span className="text-xs text-gray-500 dark:text-gray-400">개 (1-20)</span>
+                        </div>
+                        <Button
+                          onClick={async () => {
+                            if (!user) {
+                              alert('로그인이 필요합니다.');
+                              return;
+                            }
+                            try {
+                              await saveCalendarSettings(user.uid, featureId, {
+                                maxEventsDisplay: maxEventsDisplay,
+                              });
+                              alert('설정이 저장되었습니다.');
+                            } catch (error) {
+                              console.error('설정 저장 실패:', error);
+                              alert('설정 저장에 실패했습니다.');
+                            }
+                          }}
+                          variant="primary"
+                          size="sm"
+                          className="bg-blue-600 hover:bg-blue-700"
+                        >
+                          저장
+                        </Button>
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                        <FiInfo size={12} />
+                        펼치지 않았을 때 캘린더에 표시할 최대 일정 개수를 설정합니다.
+                      </p>
+                    </div>
+
                     {/* 일정 연속 복제 섹션 */}
                     <div className="flex flex-col gap-2 border-t border-blue-200 dark:border-blue-700 pt-3">
                       <div className="flex items-center gap-3 flex-wrap">
@@ -1916,8 +2271,22 @@ export default function CalendarPage() {
 
             {/* 캘린더 뷰 */}
             <div className="overflow-x-auto">
-              {viewMode === 'year' && <YearView year={year} events={getEventsForYear(year)} onDateClick={handleDateClick} onEventDelete={handleDeleteEvent} />}
-              {viewMode === 'month' && <MonthView currentDate={currentDate} events={getEventsForMonth(year, month)} onDateClick={handleDateClick} onEventClick={handleEditEvent} onEventDelete={handleDeleteEvent} selectedEventIds={selectedEventIds} onToggleEventSelect={(eventId) => {
+              {viewMode === 'year' && <YearView year={year} events={getEventsForYear(year)} onDateClick={handleDateClick} onEventClick={handleEditEvent} onEventDelete={handleDeleteEvent} onMonthClick={handleMonthClick} expandedMonths={expandedMonths} onToggleMonthExpand={(monthIndex) => {
+                setExpandedMonths(prev => {
+                  const newSet = new Set(prev);
+                  if (newSet.has(monthIndex)) {
+                    newSet.delete(monthIndex);
+                  } else {
+                    newSet.add(monthIndex);
+                  }
+                  return newSet;
+                });
+              }} />}
+              {viewMode === 'month' && <MonthView currentDate={currentDate} events={getEventsForMonth(year, month)} onDateClick={handleDayView} onEventClick={handleEditEvent} onEventDelete={handleDeleteEvent} onWeekClick={handleWeekClick} onAddEvent={(date) => {
+                setSelectedDate(date);
+                setIsEventModalOpen(true);
+                setEditingEvent(null);
+              }} showAddEventButtons={showAddEventButtons} maxEventsDisplay={maxEventsDisplay} selectedEventIds={selectedEventIds} onToggleEventSelect={(eventId) => {
                 setSelectedEventIds(prev => {
                   const newSet = new Set(prev);
                   if (newSet.has(eventId)) {
@@ -1928,8 +2297,287 @@ export default function CalendarPage() {
                   return newSet;
                 });
               }} isMealOrderEnabled={isMealOrderEnabled} />}
-              {viewMode === 'week' && <WeekView currentDate={currentDate} events={getEventsForWeek(getWeekStart(currentDate))} onDateClick={handleDateClick} onEventClick={handleEditEvent} onEventDelete={handleDeleteEvent} isMealOrderEnabled={isMealOrderEnabled} />}
-              {viewMode === 'day' && <DayView date={currentDate} events={getEventsForDate(currentDate)} onDateClick={handleDateClick} onEventClick={handleEditEvent} onEventDelete={handleDeleteEvent} isMealOrderEnabled={isMealOrderEnabled} />}
+              {viewMode === 'week' && <WeekView currentDate={currentDate} events={getEventsForWeek(getWeekStart(currentDate))} onDateClick={handleDayView} onAddEvent={handleAddEventInWeek} onEventClick={handleEditEvent} onEventDelete={handleDeleteEvent} showAddEventButtons={showAddEventButtons} isMealOrderEnabled={isMealOrderEnabled} />}
+              {viewMode === 'day' && <DayView date={currentDate} events={getEventsForDate(currentDate)} onDateClick={handleDateClick} onEventClick={handleEditEvent} onEventDelete={handleDeleteEvent} onAddEvent={(date) => {
+                setSelectedDate(date);
+                setIsEventModalOpen(true);
+                setEditingEvent(null);
+              }} showAddEventButtons={showAddEventButtons} onEventTimeUpdate={async (eventId, newDate) => {
+                if (!user) {
+                  console.error('로그인이 필요합니다.');
+                  return;
+                }
+                try {
+                  const event = events.find(e => e.id === eventId);
+                  if (!event) return;
+                  
+                  const newDateObj = new Date(newDate);
+                  const hasTime = newDateObj.getHours() !== 0 || newDateObj.getMinutes() !== 0;
+                  
+                  // 시간이 설정되거나 제거될 때, 같은 날짜의 모든 일정(시간 있는 것 포함)의 순서 인덱스 재계산
+                  const dayEvents = getEventsForDate(currentDate);
+                  // 시간이 업데이트될 이벤트를 제외한 나머지 이벤트들로 인덱스 재계산
+                  const allDayEvents = dayEvents.map(e => {
+                    if (e.id === eventId) {
+                      return { ...e, date: newDate };
+                    }
+                    return e;
+                  });
+                  
+                  // 시간이 없는 일정들만 필터링하여 순서 인덱스 계산
+                  const eventsWithoutTime = allDayEvents.filter(e => {
+                    const eDate = new Date(e.date);
+                    return eDate.getHours() === 0 && eDate.getMinutes() === 0;
+                  });
+                  
+                  // 정렬 함수 (식단 옵션에 따라)
+                  const sortEventsForOrder = (events: CalendarEvent[], useMealOrder: boolean): CalendarEvent[] => {
+                    return [...events].sort((a, b) => {
+                      if (useMealOrder) {
+                        const hasDinnerEvent = events.some(e => {
+                          const hasDinnerTag = e.tags?.includes('저녁') || false;
+                          const titleLower = e.title.toLowerCase();
+                          return hasDinnerTag || titleLower.includes('저녁');
+                        });
+                        
+                        const getEventTypePriority = (e: CalendarEvent): number => {
+                          const hasBreakfastTag = e.tags?.includes('아침') || false;
+                          const hasLunchTag = e.tags?.includes('점심') || false;
+                          const hasDinnerTag = e.tags?.includes('저녁') || false;
+                          const hasCompanyDinnerTag = e.tags?.includes('회식') || false;
+                          const hasOtherTag = e.tags?.includes('기타') || false;
+                          const titleLower = e.title.toLowerCase();
+                          if (hasBreakfastTag || titleLower.includes('아침')) return 1;
+                          if (hasLunchTag || titleLower.includes('점심')) return 2;
+                          if (hasDinnerTag || titleLower.includes('저녁')) return 3;
+                          if (hasCompanyDinnerTag || titleLower.includes('회식')) return hasDinnerEvent ? 4 : 3;
+                          if (hasOtherTag || titleLower.includes('기타')) return 5;
+                          return 6;
+                        };
+                        
+                        const priorityA = getEventTypePriority(a);
+                        const priorityB = getEventTypePriority(b);
+                        
+                        if (priorityA !== priorityB) {
+                          return priorityA - priorityB;
+                        }
+                        
+                        const orderA = a.mealOrderIndex ?? Infinity;
+                        const orderB = b.mealOrderIndex ?? Infinity;
+                        return orderA - orderB;
+                      } else {
+                        const orderA = a.orderIndex ?? Infinity;
+                        const orderB = b.orderIndex ?? Infinity;
+                        return orderA - orderB;
+                      }
+                    });
+                  };
+                  
+                  // 시간이 없는 일정들의 순서 인덱스 재계산
+                  const sortedEventsWithoutTime = sortEventsForOrder(eventsWithoutTime, isMealOrderEnabled);
+                  
+                  // 시간이 없는 일정들의 인덱스 업데이트
+                  const updatePromises = sortedEventsWithoutTime.map((e, index) => {
+                    let needsUpdate = false;
+                    const updateData: Partial<CalendarEvent> = {
+                      title: e.title,
+                      date: e.date,
+                      description: e.description,
+                      color: e.color,
+                      tags: e.tags || [],
+                      status: e.status,
+                    };
+                    
+                    if (isMealOrderEnabled) {
+                      if (e.mealOrderIndex !== index) {
+                        updateData.mealOrderIndex = index;
+                        needsUpdate = true;
+                      }
+                    } else {
+                      if (e.orderIndex !== index) {
+                        updateData.orderIndex = index;
+                        needsUpdate = true;
+                      }
+                    }
+                    
+                    if (needsUpdate) {
+                      return handleUpdateEvent(e.id!, updateData as any);
+                    }
+                    return Promise.resolve();
+                  });
+                  
+                  // 시간 업데이트와 순서 인덱스 업데이트를 함께 수행
+                  await Promise.all([
+                    handleUpdateEvent(eventId, {
+                      title: event.title,
+                      date: newDate,
+                      description: event.description,
+                      color: event.color,
+                      tags: event.tags || [],
+                      status: event.status,
+                    }),
+                    ...updatePromises
+                  ]);
+                } catch (error) {
+                  console.error('일정 시간 업데이트 실패:', error);
+                  alert('일정 시간 업데이트에 실패했습니다.');
+                }
+              }} onEventOrderUpdate={async (eventId, newOrderIndex) => {
+                if (!user) {
+                  console.error('로그인이 필요합니다.');
+                  return;
+                }
+                try {
+                  // 같은 날짜의 모든 일정 (시간 있는 것 포함)
+                  const dayEvents = getEventsForDate(currentDate);
+                  
+                  // 드래그한 항목 찾기
+                  const draggedEvent = dayEvents.find(e => e.id === eventId);
+                  if (!draggedEvent) return;
+                  
+                  // 정렬 함수 (식단 옵션에 따라)
+                  const sortEventsForOrder = (events: CalendarEvent[], useMealOrder: boolean): CalendarEvent[] => {
+                    return [...events].sort((a, b) => {
+                      if (useMealOrder) {
+                        const hasDinnerEvent = events.some(e => {
+                          const hasDinnerTag = e.tags?.includes('저녁') || false;
+                          const titleLower = e.title.toLowerCase();
+                          return hasDinnerTag || titleLower.includes('저녁');
+                        });
+                        
+                        const getEventTypePriority = (e: CalendarEvent): number => {
+                          const hasBreakfastTag = e.tags?.includes('아침') || false;
+                          const hasLunchTag = e.tags?.includes('점심') || false;
+                          const hasDinnerTag = e.tags?.includes('저녁') || false;
+                          const hasCompanyDinnerTag = e.tags?.includes('회식') || false;
+                          const hasOtherTag = e.tags?.includes('기타') || false;
+                          const titleLower = e.title.toLowerCase();
+                          if (hasBreakfastTag || titleLower.includes('아침')) return 1;
+                          if (hasLunchTag || titleLower.includes('점심')) return 2;
+                          if (hasDinnerTag || titleLower.includes('저녁')) return 3;
+                          if (hasCompanyDinnerTag || titleLower.includes('회식')) return hasDinnerEvent ? 4 : 3;
+                          if (hasOtherTag || titleLower.includes('기타')) return 5;
+                          return 6;
+                        };
+                        
+                        const priorityA = getEventTypePriority(a);
+                        const priorityB = getEventTypePriority(b);
+                        
+                        if (priorityA !== priorityB) {
+                          return priorityA - priorityB;
+                        }
+                        
+                        const orderA = a.mealOrderIndex ?? Infinity;
+                        const orderB = b.mealOrderIndex ?? Infinity;
+                        if (orderA !== orderB) {
+                          return orderA - orderB;
+                        }
+                      } else {
+                        const orderA = a.orderIndex ?? Infinity;
+                        const orderB = b.orderIndex ?? Infinity;
+                        return orderA - orderB;
+                      }
+                      return 0;
+                    });
+                  };
+                  
+                  // 우선순위 계산 함수
+                  const getEventTypePriority = (e: CalendarEvent): number => {
+                    if (!isMealOrderEnabled) return 0;
+                    const hasDinnerEvent = dayEvents.some((ev: CalendarEvent) => {
+                      const hasDinnerTag = ev.tags?.includes('저녁') || false;
+                      const titleLower = ev.title.toLowerCase();
+                      return hasDinnerTag || titleLower.includes('저녁');
+                    });
+                    const hasBreakfastTag = e.tags?.includes('아침') || false;
+                    const hasLunchTag = e.tags?.includes('점심') || false;
+                    const hasDinnerTag = e.tags?.includes('저녁') || false;
+                    const hasCompanyDinnerTag = e.tags?.includes('회식') || false;
+                    const hasOtherTag = e.tags?.includes('기타') || false;
+                    const titleLower = e.title.toLowerCase();
+                    if (hasBreakfastTag || titleLower.includes('아침')) return 1;
+                    if (hasLunchTag || titleLower.includes('점심')) return 2;
+                    if (hasDinnerTag || titleLower.includes('저녁')) return 3;
+                    if (hasCompanyDinnerTag || titleLower.includes('회식')) return hasDinnerEvent ? 4 : 3;
+                    if (hasOtherTag || titleLower.includes('기타')) return 5;
+                    return 6;
+                  };
+                  
+                  // 현재 순서대로 정렬 (모든 일정 포함)
+                  const sortedEvents = sortEventsForOrder(dayEvents, isMealOrderEnabled);
+                  
+                  // 드래그한 항목의 현재 인덱스 찾기
+                  const draggedIndex = sortedEvents.findIndex(e => e.id === eventId);
+                  if (draggedIndex === -1) return;
+                  
+                  // 드래그한 항목의 우선순위
+                  const draggedPriority = getEventTypePriority(draggedEvent);
+                  
+                  // 새 위치의 우선순위 확인
+                  const targetEvent = sortedEvents[newOrderIndex];
+                  const targetPriority = targetEvent ? getEventTypePriority(targetEvent) : draggedPriority;
+                  
+                  // 드래그한 항목을 제거하고 새 위치에 삽입
+                  const newSortedEvents = [...sortedEvents];
+                  const [removed] = newSortedEvents.splice(draggedIndex, 1);
+                  newSortedEvents.splice(newOrderIndex, 0, removed);
+                  
+                  let finalSortedEvents: CalendarEvent[];
+                  
+                  if (isMealOrderEnabled) {
+                    // 식단 옵션이 켜져 있을 때
+                    if (draggedPriority === targetPriority) {
+                      // 같은 우선순위 내에서 이동: 드래그한 위치 그대로 유지
+                      finalSortedEvents = newSortedEvents;
+                    } else {
+                      // 다른 우선순위로 이동: 다시 정렬하여 우선순위에 맞게 배치
+                      finalSortedEvents = sortEventsForOrder(newSortedEvents, true);
+                    }
+                    
+                    // 모든 항목의 mealOrderIndex 재계산 및 업데이트
+                    const updatePromises = finalSortedEvents.map((event, index) => {
+                      if (event.mealOrderIndex !== index) {
+                        return handleUpdateEvent(event.id!, {
+                          title: event.title,
+                          date: event.date,
+                          description: event.description,
+                          color: event.color,
+                          tags: event.tags || [],
+                          status: event.status,
+                          mealOrderIndex: index,
+                        } as any);
+                      }
+                      return Promise.resolve();
+                    });
+                    
+                    await Promise.all(updatePromises);
+                  } else {
+                    // 식단 옵션이 꺼져 있을 때: 드래그한 위치 그대로 유지
+                    finalSortedEvents = newSortedEvents;
+                    
+                    // 모든 항목의 orderIndex 재계산 및 업데이트
+                    const updatePromises = finalSortedEvents.map((event, index) => {
+                      if (event.orderIndex !== index) {
+                        return handleUpdateEvent(event.id!, {
+                          title: event.title,
+                          date: event.date,
+                          description: event.description,
+                          color: event.color,
+                          tags: event.tags || [],
+                          status: event.status,
+                          orderIndex: index,
+                        } as any);
+                      }
+                      return Promise.resolve();
+                    });
+                    
+                    await Promise.all(updatePromises);
+                  }
+                } catch (error) {
+                  console.error('일정 순서 업데이트 실패:', error);
+                  alert('일정 순서 업데이트에 실패했습니다.');
+                }
+              }} isMealOrderEnabled={isMealOrderEnabled} />}
             </div>
           </Card>
 
@@ -1983,6 +2631,18 @@ export default function CalendarPage() {
                 setIsExportModalOpen(false);
                 setExportText('');
               }}
+            />
+          )}
+
+          {/* 연도 선택 모달 */}
+          {isYearSelectModalOpen && (
+            <YearSelectModal
+              currentYear={year}
+              onYearSelect={(selectedYear) => {
+                setCurrentDate(new Date(selectedYear, month, 1));
+                setIsYearSelectModalOpen(false);
+              }}
+              onClose={() => setIsYearSelectModalOpen(false)}
             />
           )}
 
@@ -2136,6 +2796,106 @@ function ExportModal({ exportText, onCopy, onDownload, onClose }: ExportModalPro
             icon={<FiDownload size={18} />}
           >
             파일 다운로드
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// 연도 선택 모달 컴포넌트
+interface YearSelectModalProps {
+  currentYear: number;
+  onYearSelect: (year: number) => void;
+  onClose: () => void;
+}
+
+function YearSelectModal({ currentYear, onYearSelect, onClose }: YearSelectModalProps) {
+  const currentYearValue = new Date().getFullYear();
+  const startYear = 1900; // 시작 연도
+  const endYear = 2100; // 끝 연도
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const currentYearRef = useRef<HTMLButtonElement>(null);
+  
+  const years: number[] = [];
+  for (let y = startYear; y <= endYear; y++) {
+    years.push(y);
+  }
+
+  // 모달이 열릴 때 현재 연도로 스크롤
+  useEffect(() => {
+    if (currentYearRef.current && scrollContainerRef.current) {
+      const container = scrollContainerRef.current;
+      const target = currentYearRef.current;
+      
+      // 약간의 지연을 두어 DOM이 완전히 렌더링된 후 스크롤
+      setTimeout(() => {
+        const containerRect = container.getBoundingClientRect();
+        const targetRect = target.getBoundingClientRect();
+        const scrollTop = targetRect.top - containerRect.top + container.scrollTop - (containerRect.height / 2) + (targetRect.height / 2);
+        
+        container.scrollTo({
+          top: scrollTop,
+          behavior: 'smooth'
+        });
+      }, 100);
+    }
+  }, []);
+
+  return (
+    <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50 p-4">
+      <Card className="w-full max-w-md shadow-2xl">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white">연도 선택</h3>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+          >
+            <FiX size={20} className="text-gray-500 dark:text-gray-400" />
+          </button>
+        </div>
+
+        <div className="p-6">
+          <div ref={scrollContainerRef} className="max-h-[60vh] overflow-y-auto">
+            <div className="grid grid-cols-4 gap-2">
+              {years.map((y) => (
+                <button
+                  key={y}
+                  ref={y === currentYear ? currentYearRef : null}
+                  onClick={() => {
+                    onYearSelect(y);
+                    onClose();
+                  }}
+                  className={`px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                    y === currentYear
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : y === currentYearValue
+                      ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50'
+                      : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700'
+                  }`}
+                >
+                  {y}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 dark:border-gray-700">
+          <Button
+            variant="ghost"
+            onClick={onClose}
+          >
+            취소
+          </Button>
+          <Button
+            variant="primary"
+            onClick={() => {
+              onYearSelect(currentYearValue);
+              onClose();
+            }}
+          >
+            올해로 이동
           </Button>
         </div>
       </Card>
@@ -2342,6 +3102,24 @@ function EventModal({ date, event, onSave, onDelete, onClose }: EventModalProps)
   const [tagInput, setTagInput] = useState('');
   const [useStatus, setUseStatus] = useState<boolean>(!!event?.status); // 상태 사용 여부
   const [status, setStatus] = useState<EventStatus>(event?.status || 'todo');
+  
+  // 시간 상태 관리
+  const getEventTime = (eventDate: Date): string => {
+    const hours = eventDate.getHours();
+    const minutes = eventDate.getMinutes();
+    // 시간과 분이 모두 0이면 시간이 없는 일정
+    if (hours === 0 && minutes === 0) {
+      return '';
+    }
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  };
+  
+  const [time, setTime] = useState<string>(() => {
+    if (event) {
+      return getEventTime(new Date(event.date));
+    }
+    return '';
+  });
 
   // 상태에 따른 기본 색상
   const getStatusColor = (status: EventStatus): string => {
@@ -2361,6 +3139,7 @@ function EventModal({ date, event, onSave, onDelete, onClose }: EventModalProps)
       // 상태가 있으면 상태 색상, 없으면 저장된 색상 또는 기본 색상
       setColor(event.color || (event.status ? getStatusColor(event.status) : '#3b82f6'));
       setTags(event.tags || []);
+      setTime(getEventTime(new Date(event.date)));
     } else {
       setTitle('');
       setDescription('');
@@ -2368,6 +3147,7 @@ function EventModal({ date, event, onSave, onDelete, onClose }: EventModalProps)
       setTags([]);
       setUseStatus(false);
       setStatus('todo');
+      setTime('');
     }
     setTagInput('');
   }, [event]);
@@ -2435,10 +3215,20 @@ function EventModal({ date, event, onSave, onDelete, onClose }: EventModalProps)
       handleAddTag();
     }
 
+    // 시간이 설정된 경우 날짜에 시간 적용
+    let eventDate = new Date(date);
+    if (time) {
+      const [hours, minutes] = time.split(':').map(Number);
+      eventDate.setHours(hours, minutes, 0, 0);
+    } else {
+      // 시간이 없으면 00:00:00으로 설정
+      eventDate.setHours(0, 0, 0, 0);
+    }
+
     onSave({
       title: title.trim(),
       description: description.trim(),
-      date,
+      date: eventDate,
       color,
       tags,
       status: useStatus ? status : undefined, // 상태 사용 안 하면 undefined
@@ -2478,6 +3268,32 @@ function EventModal({ date, event, onSave, onDelete, onClose }: EventModalProps)
             <div className="px-4 py-2 bg-gray-50 dark:bg-gray-800 rounded-lg text-gray-900 dark:text-white">
               {date.getFullYear()}년 {date.getMonth() + 1}월 {date.getDate()}일
             </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              시간
+            </label>
+            <TimePicker
+              value={time}
+              onChange={setTime}
+            />
+            {time && (
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                현재 시간: {(() => {
+                  const [h, m] = time.split(':');
+                  const hourNum = parseInt(h);
+                  const period = hourNum >= 12 ? '오후' : '오전';
+                  const displayHour = hourNum === 0 ? 12 : hourNum > 12 ? hourNum - 12 : hourNum;
+                  return `${period} ${displayHour}:${m}`;
+                })()}
+              </p>
+            )}
+            {!time && (
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                시간을 설정하지 않으면 시간이 없는 일정으로 저장됩니다.
+              </p>
+            )}
           </div>
 
           <div>
@@ -2673,10 +3489,14 @@ interface YearViewProps {
   year: number;
   events: CalendarEvent[];
   onDateClick: (date: Date) => void;
+  onEventClick: (event: CalendarEvent) => void;
   onEventDelete: (eventId: string) => void;
+  onMonthClick: (monthIndex: number) => void;
+  expandedMonths: Set<number>;
+  onToggleMonthExpand: (monthIndex: number) => void;
 }
 
-function YearView({ year, events, onDateClick, onEventDelete }: YearViewProps) {
+function YearView({ year, events, onDateClick, onEventClick, onEventDelete, onMonthClick, expandedMonths, onToggleMonthExpand }: YearViewProps) {
   const months = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
   const today = new Date();
 
@@ -2699,11 +3519,23 @@ function YearView({ year, events, onDateClick, onEventDelete }: YearViewProps) {
             onClick={() => onDateClick(monthDate)}
           >
             <div className="flex items-center justify-between mb-2">
-              <h3 className="font-semibold text-gray-900 dark:text-white">{monthName}</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="font-semibold text-gray-900 dark:text-white">{monthName}</h3>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onMonthClick(index);
+                  }}
+                  className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
+                  title={`${monthName} 보기`}
+                >
+                  <FiChevronRight size={16} className="text-gray-500 dark:text-gray-400" />
+                </button>
+              </div>
               <span className="text-sm text-gray-500 dark:text-gray-400">{monthEvents.length}개</span>
             </div>
             <div className="space-y-1">
-              {monthEvents.slice(0, 3).map(event => {
+              {(expandedMonths.has(index) ? monthEvents : monthEvents.slice(0, 3)).map(event => {
                 const hasStatus = !!event.status;
                 const getStatusIcon = () => {
                   if (!hasStatus) return <FiMinus size={10} className="opacity-60" />;
@@ -2714,7 +3546,11 @@ function YearView({ year, events, onDateClick, onEventDelete }: YearViewProps) {
                 return (
                   <div
                     key={event.id}
-                    className={`text-xs px-2 py-1 rounded truncate flex items-center gap-1 group ${
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEventClick(event);
+                    }}
+                    className={`text-xs px-2 py-1 rounded truncate flex items-center gap-1 group cursor-pointer hover:opacity-90 transition-opacity ${
                       hasStatus ? '' : 'border border-dashed border-white/30'
                     }`}
                     style={{ backgroundColor: event.color || '#3b82f6', color: 'white' }}
@@ -2738,9 +3574,15 @@ function YearView({ year, events, onDateClick, onEventDelete }: YearViewProps) {
                 );
               })}
               {monthEvents.length > 3 && (
-                <div className="text-xs text-gray-500 dark:text-gray-400">
-                  +{monthEvents.length - 3}개 더
-                </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleMonthExpand(index);
+                  }}
+                  className="text-xs text-blue-500 dark:text-blue-400 hover:text-blue-600 dark:hover:text-blue-300 hover:underline cursor-pointer transition-colors"
+                >
+                  {expandedMonths.has(index) ? '접기' : `+${monthEvents.length - 3}개 더`}
+                </button>
               )}
             </div>
           </Card>
@@ -2757,12 +3599,31 @@ interface MonthViewProps {
   onDateClick: (date: Date) => void;
   onEventClick: (event: CalendarEvent) => void;
   onEventDelete: (eventId: string) => void;
+  onWeekClick: (weekStartDate: Date) => void;
+  onAddEvent?: (date: Date) => void;
+  showAddEventButtons?: boolean;
   selectedEventIds?: Set<string>;
   onToggleEventSelect?: (eventId: string) => void;
   isMealOrderEnabled?: boolean;
+  maxEventsDisplay?: number;
 }
 
-function MonthView({ currentDate, events, onDateClick, onEventClick, onEventDelete, selectedEventIds = new Set(), onToggleEventSelect, isMealOrderEnabled = false }: MonthViewProps) {
+function MonthView({ currentDate, events, onDateClick, onEventClick, onEventDelete, onWeekClick, onAddEvent, showAddEventButtons = true, selectedEventIds = new Set(), onToggleEventSelect, isMealOrderEnabled = false, maxEventsDisplay = 3 }: MonthViewProps) {
+  const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
+  
+  const toggleDayExpand = (date: Date) => {
+    const dateKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+    setExpandedDays(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(dateKey)) {
+        newSet.delete(dateKey);
+      } else {
+        newSet.add(dateKey);
+      }
+      return newSet;
+    });
+  };
+  
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
   const firstDay = new Date(year, month, 1);
@@ -2841,8 +3702,8 @@ function MonthView({ currentDate, events, onDateClick, onEventClick, onEventDele
             return 5;
           }
           
-          // 그 외는 우선순위 0
-          return 0;
+          // 특정 텍스트가 없으면 우선순위 6
+          return 6;
         };
         
         const priorityA = getEventTypePriority(a);
@@ -2852,21 +3713,21 @@ function MonthView({ currentDate, events, onDateClick, onEventClick, onEventDele
         if (priorityA !== priorityB) {
           return priorityA - priorityB;
         }
+        
+        // 2. 같은 우선순위 내에서는 mealOrderIndex로 정렬
+        const orderA = a.mealOrderIndex ?? Infinity;
+        const orderB = b.mealOrderIndex ?? Infinity;
+        if (orderA !== orderB) {
+          return orderA - orderB;
+        }
+        
+        return 0;
       }
       
-      // 식단 정렬 옵션이 비활성화된 경우 또는 같은 타입 내에서: 기존 정렬 방식
-      // 1. 제목 순서
-      if (a.title !== b.title) {
-        return a.title.localeCompare(b.title);
-      }
-      
-      // 2. 색상 순서
-      if (a.color !== b.color) {
-        return (a.color || '').localeCompare(b.color || '');
-      }
-      
-      // 3. ID 순서 (최종 정렬 기준)
-      return (a.id || '').localeCompare(b.id || '');
+      // 식단 정렬 옵션이 비활성화된 경우: orderIndex만 사용
+      const orderA = a.orderIndex ?? Infinity;
+      const orderB = b.orderIndex ?? Infinity;
+      return orderA - orderB;
     });
   };
 
@@ -2970,10 +3831,19 @@ function MonthView({ currentDate, events, onDateClick, onEventClick, onEventDele
     return { todo, inProgress, done, noStatus };
   };
 
+  // 주의 시작일 계산 (일요일)
+  const getWeekStart = (date: Date) => {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = d.getDate() - day;
+    return new Date(d.setDate(diff));
+  };
+
   return (
     <table className="w-full border-collapse table-fixed">
       <thead>
         <tr>
+          <th className="w-12 p-3 text-center font-semibold text-sm border border-gray-200 dark:border-gray-700"></th>
           {weekDays.map((day, index) => (
             <th
               key={day}
@@ -2989,8 +3859,25 @@ function MonthView({ currentDate, events, onDateClick, onEventClick, onEventDele
         </tr>
       </thead>
       <tbody>
-        {Array.from({ length: Math.ceil(calendarDays.length / 7) }).map((_, weekIndex) => (
+        {Array.from({ length: Math.ceil(calendarDays.length / 7) }).map((_, weekIndex) => {
+          // 해당 주의 첫 번째 날짜 찾기 (일요일)
+          const weekStartDayIndex = weekIndex * 7;
+          const weekStartDate = calendarDays[weekStartDayIndex];
+          const weekStart = weekStartDate ? getWeekStart(new Date(weekStartDate)) : null;
+          
+          return (
           <tr key={weekIndex}>
+            <td className="w-12 p-2 text-center border border-gray-200 dark:border-gray-700">
+              {weekStart && (
+                <button
+                  onClick={() => onWeekClick(weekStart)}
+                  className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                  title={`${weekStart.getMonth() + 1}/${weekStart.getDate()} 주 보기`}
+                >
+                  <FiChevronRight size={16} className="text-gray-500 dark:text-gray-400" />
+                </button>
+              )}
+            </td>
             {Array.from({ length: 7 }).map((_, dayIndex) => {
               const dayIndexInArray = weekIndex * 7 + dayIndex;
               const date = calendarDays[dayIndexInArray];
@@ -3003,15 +3890,14 @@ function MonthView({ currentDate, events, onDateClick, onEventClick, onEventDele
               return (
                 <td
                   key={dayIndex}
-                  className={`w-[14.28%] h-24 border border-gray-200 dark:border-gray-700 p-0 align-top relative ${
+                  className={`w-[14.28%] h-24 border border-gray-200 dark:border-gray-700 p-0 align-top relative group ${
                     !date ? 'bg-gray-50 dark:bg-gray-900/50' : 
-                    'hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer'
+                    'hover:bg-gray-50 dark:hover:bg-gray-800/50'
                   } ${
                     dayIndex === 0 ? 'text-red-600 dark:text-red-400' : 
                     dayIndex === 6 ? 'text-blue-600 dark:text-blue-400' : 
                     'text-gray-900 dark:text-white'
                   }`}
-                  onClick={() => date && onDateClick(date)}
                 >
                   {date && (() => {
                     const dateStats = getStatusStatsForDate(date);
@@ -3019,13 +3905,22 @@ function MonthView({ currentDate, events, onDateClick, onEventClick, onEventDele
                     return (
                       <div className="h-full flex flex-col p-2">
                         <div className="flex items-center justify-between mb-1">
-                          <div className={`text-sm font-medium relative ${
-                            isToday ? 'text-blue-600 dark:text-blue-400 font-bold' : ''
-                          }`}>
-                            {date.getDate()}
-                            {isToday && (
-                              <span className="absolute -bottom-0.5 left-1/2 transform -translate-x-1/2 w-4 h-0.5 bg-blue-600 dark:bg-blue-400 rounded-full"></span>
-                            )}
+                          <div 
+                            className="flex items-center flex-1 cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDateClick(date);
+                            }}
+                            title="일 상세 보기"
+                          >
+                            <div className={`text-sm font-medium relative ${
+                              isToday ? 'text-blue-600 dark:text-blue-400 font-bold' : ''
+                            }`}>
+                              {date.getDate()}
+                              {isToday && (
+                                <span className="absolute -bottom-0.5 left-1/2 transform -translate-x-1/2 w-4 h-0.5 bg-blue-600 dark:bg-blue-400 rounded-full"></span>
+                              )}
+                            </div>
                           </div>
                           {dateTotal > 0 && (
                             <div className="flex items-center gap-0.5 text-[10px] text-gray-500 dark:text-gray-400">
@@ -3096,7 +3991,7 @@ function MonthView({ currentDate, events, onDateClick, onEventClick, onEventDele
                               usedRows.add(targetRow);
                             });
                             
-                            // 그룹 일정이 아닌 일정들을 빈 자리에 배치
+                            // 그룹 일정이 아닌 일정들을 빈 자리에 배치 (orderIndex/mealOrderIndex 순서 유지)
                             let nonGroupIndex = 0;
                             for (let i = 0; i < Math.max(finalSorted.length, nonGroupEvents.length); i++) {
                               if (i < finalSorted.length && finalSorted[i] === null) {
@@ -3117,7 +4012,17 @@ function MonthView({ currentDate, events, onDateClick, onEventClick, onEventDele
                             // null 값 제거
                             sortedEvents = finalSorted.filter(e => e !== null);
                             
-                            return sortedEvents.slice(0, 3).map((event, index) => {
+                            // recurringGroupId가 있는 일정들의 위치 조정 후에도 orderIndex/mealOrderIndex 순서를 유지하기 위해
+                            // 그룹 일정이 아닌 일정들은 이미 sortEvents로 정렬되어 있으므로 순서가 유지됨
+                            // 그룹 일정도 시작일의 행 인덱스에 맞춰 배치되지만, 같은 그룹 내에서는 원래 정렬 순서 유지
+                            
+                            const dateKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+                            const isExpanded = expandedDays.has(dateKey);
+                            
+                            // 확장되지 않은 경우 설정된 개수만 표시
+                            const displayEvents = isExpanded ? sortedEvents : sortedEvents.slice(0, maxEventsDisplay);
+                            
+                            return displayEvents.map((event, index) => {
                               const hasStatus = !!event.status;
                               const getStatusIcon = () => {
                                 if (!hasStatus) return <FiMinus size={10} className="opacity-60" />;
@@ -3215,10 +4120,30 @@ function MonthView({ currentDate, events, onDateClick, onEventClick, onEventDele
                             );
                             });
                           })()}
-                          {dayEvents.length > 3 && (
-                            <div className="text-xs text-gray-500 dark:text-gray-400">
-                              +{dayEvents.length - 3}개 더
+                          {dayEvents.length > maxEventsDisplay && (
+                            <div 
+                              className="text-xs text-gray-500 dark:text-gray-400 cursor-pointer hover:text-blue-600 dark:hover:text-blue-400"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleDayExpand(date);
+                              }}
+                            >
+                              {expandedDays.has(`${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`) ? '접기' : `+${dayEvents.length - maxEventsDisplay}개 더`}
                             </div>
+                          )}
+                          {/* 일정 추가 버튼 */}
+                          {showAddEventButtons && onAddEvent && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onAddEvent(date);
+                              }}
+                              className="w-full mt-2 p-1.5 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg hover:border-blue-500 dark:hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors flex items-center justify-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400"
+                              title="일정 추가"
+                            >
+                              <FiPlus size={12} />
+                              <span>일정 추가</span>
+                            </button>
                           )}
                         </div>
                       </div>
@@ -3228,7 +4153,8 @@ function MonthView({ currentDate, events, onDateClick, onEventClick, onEventDele
               );
             })}
           </tr>
-        ))}
+          );
+        })}
       </tbody>
     </table>
   );
@@ -3239,12 +4165,14 @@ interface WeekViewProps {
   currentDate: Date;
   events: CalendarEvent[];
   onDateClick: (date: Date) => void;
+  onAddEvent: (date: Date) => void;
   onEventClick: (event: CalendarEvent) => void;
   onEventDelete: (eventId: string) => void;
+  showAddEventButtons?: boolean;
   isMealOrderEnabled?: boolean;
 }
 
-function WeekView({ currentDate, events, onDateClick, onEventClick, onEventDelete, isMealOrderEnabled = false }: WeekViewProps) {
+function WeekView({ currentDate, events, onDateClick, onAddEvent, onEventClick, onEventDelete, showAddEventButtons = true, isMealOrderEnabled = false }: WeekViewProps) {
   const getWeekStart = (date: Date) => {
     const d = new Date(date);
     const day = d.getDay();
@@ -3325,8 +4253,8 @@ function WeekView({ currentDate, events, onDateClick, onEventClick, onEventDelet
             return 5;
           }
           
-          // 그 외는 우선순위 0
-          return 0;
+          // 특정 텍스트가 없으면 우선순위 6
+          return 6;
         };
         
         const priorityA = getEventTypePriority(a);
@@ -3336,21 +4264,21 @@ function WeekView({ currentDate, events, onDateClick, onEventClick, onEventDelet
         if (priorityA !== priorityB) {
           return priorityA - priorityB;
         }
+        
+        // 2. 같은 우선순위 내에서는 mealOrderIndex로 정렬
+        const orderA = a.mealOrderIndex ?? Infinity;
+        const orderB = b.mealOrderIndex ?? Infinity;
+        if (orderA !== orderB) {
+          return orderA - orderB;
+        }
+        
+        return 0;
       }
       
-      // 식단 정렬 옵션이 비활성화된 경우 또는 같은 타입 내에서: 기존 정렬 방식
-      // 1. 제목 순서
-      if (a.title !== b.title) {
-        return a.title.localeCompare(b.title);
-      }
-      
-      // 2. 색상 순서
-      if (a.color !== b.color) {
-        return (a.color || '').localeCompare(b.color || '');
-      }
-      
-      // 3. ID 순서 (최종 정렬 기준)
-      return (a.id || '').localeCompare(b.id || '');
+      // 식단 정렬 옵션이 비활성화된 경우: orderIndex만 사용
+      const orderA = a.orderIndex ?? Infinity;
+      const orderB = b.orderIndex ?? Infinity;
+      return orderA - orderB;
     });
   };
 
@@ -3436,6 +4364,20 @@ function WeekView({ currentDate, events, onDateClick, onEventClick, onEventDelet
                   </div>
                 );
               })}
+              {/* 일정 추가 버튼 */}
+              {showAddEventButtons && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAddEvent(date);
+                  }}
+                  className="w-full mt-2 p-2 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg hover:border-blue-500 dark:hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors flex items-center justify-center gap-2 text-sm text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400"
+                  title="일정 추가"
+                >
+                  <FiPlus size={16} />
+                  <span>일정 추가</span>
+                </button>
+              )}
             </div>
           </div>
         );
@@ -3451,10 +4393,19 @@ interface DayViewProps {
   onDateClick: (date: Date) => void;
   onEventClick: (event: CalendarEvent) => void;
   onEventDelete: (eventId: string) => void;
+  onAddEvent?: (date: Date) => void;
+  onEventTimeUpdate?: (eventId: string, newDate: Date) => void;
+  onEventOrderUpdate?: (eventId: string, newOrderIndex: number) => void;
+  showAddEventButtons?: boolean;
   isMealOrderEnabled?: boolean;
 }
 
-function DayView({ date, events, onDateClick, onEventClick, onEventDelete, isMealOrderEnabled = false }: DayViewProps) {
+function DayView({ date, events, onDateClick, onEventClick, onEventDelete, onAddEvent, onEventTimeUpdate, onEventOrderUpdate, showAddEventButtons = true, isMealOrderEnabled = false }: DayViewProps) {
+  const [draggedEventId, setDraggedEventId] = useState<string | null>(null);
+  const [dragOverHour, setDragOverHour] = useState<number | null>(null);
+  const [dragOverNoTimeArea, setDragOverNoTimeArea] = useState<boolean>(false);
+  const [dragOverOrderIndex, setDragOverOrderIndex] = useState<number | null>(null);
+  
   const today = new Date();
   const isToday = date.getFullYear() === today.getFullYear() &&
                   date.getMonth() === today.getMonth() &&
@@ -3462,8 +4413,25 @@ function DayView({ date, events, onDateClick, onEventClick, onEventDelete, isMea
 
   const hours = Array.from({ length: 24 }, (_, i) => i);
 
+  // 시간이 있는 일정과 없는 일정 분리
+  const eventsWithTime: CalendarEvent[] = [];
+  const eventsWithoutTime: CalendarEvent[] = [];
+  const allEventsForLeft: CalendarEvent[] = []; // 왼쪽에 표시할 모든 일정 (시간 있는 것도 포함)
+
+  events.forEach(event => {
+    const eventDate = new Date(event.date);
+    // 시간과 분이 모두 0이면 시간이 없는 일정으로 간주
+    if (eventDate.getHours() === 0 && eventDate.getMinutes() === 0) {
+      eventsWithoutTime.push(event);
+      allEventsForLeft.push(event);
+    } else {
+      eventsWithTime.push(event);
+      allEventsForLeft.push(event); // 시간이 있는 일정도 왼쪽에 표시
+    }
+  });
+
   const getEventsForHour = (hour: number) => {
-    return events.filter(event => {
+    return eventsWithTime.filter(event => {
       const eventDate = new Date(event.date);
       return eventDate.getHours() === hour;
     });
@@ -3522,33 +4490,190 @@ function DayView({ date, events, onDateClick, onEventClick, onEventDelete, isMea
             return 5;
           }
           
-          // 그 외는 우선순위 0
-          return 0;
+          // 특정 텍스트가 없으면 우선순위 6
+          return 6;
         };
         
         const priorityA = getEventTypePriority(a);
         const priorityB = getEventTypePriority(b);
         
-        // 1. 타입 우선순위 (아침=1, 점심=2, 저녁=3, 회식=3 또는 4, 기타=5, 기타=0)
+        // 1. 타입 우선순위 비교 (낮은 숫자가 먼저)
         if (priorityA !== priorityB) {
           return priorityA - priorityB;
         }
+        
+        // 2. 같은 우선순위 내에서는 mealOrderIndex로 정렬 (낮은 숫자가 먼저, 먼저 등록한 것이 앞순번)
+        const orderA = a.mealOrderIndex ?? Infinity;
+        const orderB = b.mealOrderIndex ?? Infinity;
+        if (orderA !== orderB) {
+          return orderA - orderB;
+        }
+        
+        // 같은 우선순위이고 mealOrderIndex도 같으면 0 반환
+        return 0;
+      } else {
+        // 식단 정렬 옵션이 비활성화된 경우: orderIndex 순서만 사용
+        const orderA = a.orderIndex ?? Infinity;
+        const orderB = b.orderIndex ?? Infinity;
+        return orderA - orderB;
       }
-      
-      // 식단 정렬 옵션이 비활성화된 경우 또는 같은 타입 내에서: 기존 정렬 방식
-      // 1. 제목 순서
-      if (a.title !== b.title) {
-        return a.title.localeCompare(b.title);
-      }
-      
-      // 2. 색상 순서
-      if (a.color !== b.color) {
-        return (a.color || '').localeCompare(b.color || '');
-      }
-      
-      // 3. ID 순서 (최종 정렬 기준)
-      return (a.id || '').localeCompare(b.id || '');
     });
+  };
+
+  // 드래그 시작
+  const handleDragStart = (eventId: string) => {
+    setDraggedEventId(eventId);
+  };
+
+  // 드래그 종료
+  const handleDragEnd = () => {
+    setDraggedEventId(null);
+    setDragOverHour(null);
+    setDragOverNoTimeArea(false);
+    setDragOverOrderIndex(null);
+  };
+
+  // 드롭 처리 (시간 슬롯에)
+  const handleDrop = (hour: number) => {
+    if (!draggedEventId || !onEventTimeUpdate) return;
+    
+    const newDate = new Date(date);
+    newDate.setHours(hour, 0, 0, 0);
+    onEventTimeUpdate(draggedEventId, newDate);
+    
+    setDraggedEventId(null);
+    setDragOverHour(null);
+  };
+
+  // 드롭 처리 (시간 없는 영역에)
+  const handleDropToNoTimeArea = () => {
+    if (!draggedEventId || !onEventTimeUpdate) return;
+    
+    const newDate = new Date(date);
+    newDate.setHours(0, 0, 0, 0);
+    onEventTimeUpdate(draggedEventId, newDate);
+    
+    setDraggedEventId(null);
+    setDragOverNoTimeArea(false);
+  };
+
+  // 드롭 처리 (순서 변경용)
+  const handleDropForOrder = (targetIndex: number) => {
+    if (!draggedEventId || !onEventOrderUpdate) return;
+    
+    // 모든 일정을 정렬하여 인덱스 계산
+    const sortedAllEvents = sortEvents(allEventsForLeft);
+    const draggedIndex = sortedAllEvents.findIndex(e => e.id === draggedEventId);
+    
+    if (draggedIndex === -1) return;
+    
+    // targetIndex는 모든 일정 중에서의 인덱스
+    const newOrderIndex = targetIndex;
+    
+    onEventOrderUpdate(draggedEventId, newOrderIndex);
+    
+    setDraggedEventId(null);
+    setDragOverOrderIndex(null);
+  };
+
+  // 일정 렌더링 함수 (왼쪽 일정 목록용)
+  const renderEvent = (event: CalendarEvent, isDraggable: boolean = false, eventIndex?: number, isTimeSet: boolean = false) => {
+    const hasStatus = !!event.status;
+    const eventDate = new Date(event.date);
+    const hasTime = isTimeSet || (eventDate.getHours() !== 0 || eventDate.getMinutes() !== 0);
+    const getStatusIcon = () => {
+      if (!hasStatus) return <FiMinus size={14} className="opacity-60" />;
+      if (event.status === 'done') return <FiCheckCircle size={14} />;
+      if (event.status === 'todo') return <FiSquare size={14} />;
+      return <FiCircle size={14} />; // in_progress
+    };
+    const sortedAllEventsForDragOver = sortEvents(allEventsForLeft);
+    const allIndexForDragOver = sortedAllEventsForDragOver.findIndex(ev => ev.id === event.id);
+    const isDragOver = draggedEventId && draggedEventId !== event.id && dragOverOrderIndex === allIndexForDragOver;
+    return (
+      <div
+        key={event.id}
+        draggable={isDraggable}
+        onDragStart={() => isDraggable && handleDragStart(event.id)}
+        onDragEnd={handleDragEnd}
+        onDragOver={(e) => {
+          if (isDraggable && draggedEventId && draggedEventId !== event.id && eventIndex !== undefined) {
+            e.preventDefault();
+            e.stopPropagation();
+            // 모든 일정에서 순서 변경 가능 (시간 있는 것 포함)
+            const sortedAllEvents = sortEvents(allEventsForLeft);
+            const allIndex = sortedAllEvents.findIndex(ev => ev.id === event.id);
+            if (allIndex >= 0) {
+              setDragOverOrderIndex(allIndex);
+            }
+          }
+        }}
+        onDragLeave={() => {
+          if (eventIndex !== undefined) {
+            const sortedAllEvents = sortEvents(allEventsForLeft);
+            const allIndex = sortedAllEvents.findIndex(ev => ev.id === event.id);
+            if (dragOverOrderIndex === allIndex) {
+              setDragOverOrderIndex(null);
+            }
+          }
+        }}
+        onDrop={(e) => {
+          if (isDraggable && draggedEventId && draggedEventId !== event.id && eventIndex !== undefined && onEventOrderUpdate) {
+            e.preventDefault();
+            e.stopPropagation();
+            // 모든 일정에서 순서 변경 가능 (시간 있는 것 포함)
+            const sortedAllEvents = sortEvents(allEventsForLeft);
+            const allIndex = sortedAllEvents.findIndex(ev => ev.id === event.id);
+            if (allIndex >= 0) {
+              handleDropForOrder(allIndex);
+            }
+          }
+        }}
+        className={`px-3 py-2 rounded cursor-pointer hover:opacity-80 flex items-start gap-2 group ${
+          hasStatus && !hasTime ? '' : 'border border-dashed border-white/30'
+        } ${hasTime ? 'border-[3px] border-dashed border-white dark:border-white' : ''} ${isDraggable ? 'cursor-move' : ''} ${draggedEventId === event.id ? 'opacity-50' : ''} ${
+          isDragOver ? 'ring-2 ring-blue-400 dark:ring-blue-600' : ''
+        }`}
+        style={{ backgroundColor: event.color || '#3b82f6', color: 'white' }}
+        onClick={(e) => {
+          e.stopPropagation();
+          onEventClick(event);
+        }}
+        title={isDraggable ? (hasTime ? '드래그하여 시간을 변경하거나 제거하세요' : '드래그하여 순서를 변경하세요') : (hasStatus ? `상태: ${event.status === 'todo' ? '해야할일' : event.status === 'in_progress' ? '하는중' : '했던일'}` : '상태 없음')}
+      >
+        <div className="flex-shrink-0 mt-0.5">{getStatusIcon()}</div>
+        <div className="flex-1 min-w-0">
+          <div className="font-medium">{event.title}</div>
+          {event.description && (
+            <div className="text-sm opacity-90 mt-1">{event.description}</div>
+          )}
+          {event.tags && event.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1.5">
+              {event.tags.map((tag, idx) => (
+                <span
+                  key={idx}
+                  className="text-xs px-1.5 py-0.5 bg-white/20 rounded-full"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            if (confirm('정말 이 일정을 삭제하시겠습니까?')) {
+              onEventDelete(event.id);
+            }
+          }}
+          className="opacity-0 group-hover:opacity-100 transition-opacity ml-1 hover:bg-white/20 rounded p-0.5 flex-shrink-0"
+          title="삭제"
+        >
+          <FiX size={14} />
+        </button>
+      </div>
+    );
   };
 
   return (
@@ -3563,79 +4688,191 @@ function DayView({ date, events, onDateClick, onEventClick, onEventDelete, isMea
         </div>
       </div>
 
-      {/* 시간별 일정 */}
-      <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-        {hours.map(hour => {
-          const hourEvents = sortEvents(getEventsForHour(hour));
-          return (
-            <div
-              key={hour}
-              className="border-b border-gray-200 dark:border-gray-700 p-3 min-h-[80px] hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer"
-              onClick={() => {
-                const newDate = new Date(date);
-                newDate.setHours(hour, 0, 0, 0);
-                onDateClick(newDate);
-              }}
-            >
-              <div className="flex gap-4">
-                <div className="w-16 text-sm text-gray-500 dark:text-gray-400 font-medium">
-                  {hour.toString().padStart(2, '0')}:00
-                </div>
-                <div className="flex-1 space-y-2">
-                  {hourEvents.length > 0 ? (
-                    hourEvents.map(event => {
-                      const hasStatus = !!event.status;
-                      const getStatusIcon = () => {
-                        if (!hasStatus) return <FiMinus size={14} className="opacity-60" />;
-                        if (event.status === 'done') return <FiCheckCircle size={14} />;
-                        if (event.status === 'todo') return <FiSquare size={14} />;
-                        return <FiCircle size={14} />; // in_progress
-                      };
+      {/* 두 개의 영역으로 분리 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* 왼쪽: 시간이 없는 일정 */}
+        <div 
+          className={`border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden transition-colors ${
+            dragOverNoTimeArea ? 'border-blue-400 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/20' : ''
+          }`}
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setDragOverNoTimeArea(true);
+          }}
+          onDragLeave={() => {
+            setDragOverNoTimeArea(false);
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleDropToNoTimeArea();
+          }}
+        >
+          <div className="bg-gray-100 dark:bg-gray-800 p-3 border-b border-gray-200 dark:border-gray-700">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">일정</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">모든 일정 (점선 테두리는 시간이 설정된 일정)</p>
+          </div>
+          <div className="p-4 space-y-2 max-h-[calc(100vh-300px)] overflow-y-auto">
+            {allEventsForLeft.length > 0 ? (
+              sortEvents(allEventsForLeft).map((event, index) => {
+                const eventDate = new Date(event.date);
+                const hasTime = eventDate.getHours() !== 0 || eventDate.getMinutes() !== 0;
+                return (
+                  <div key={event.id}>
+                    {/* 드롭 영역 (순서 변경용 - 항목 위에, 모든 일정) */}
+                    {draggedEventId && draggedEventId !== event.id && (() => {
+                      const sortedAllEvents = sortEvents(allEventsForLeft);
+                      const allIndex = sortedAllEvents.findIndex(ev => ev.id === event.id);
+                      
                       return (
                         <div
-                          key={event.id}
-                          className={`px-3 py-2 rounded cursor-pointer hover:opacity-80 flex items-start gap-2 ${
-                            hasStatus ? '' : 'border border-dashed border-white/30'
+                          className={`h-2 -my-1 transition-colors ${
+                            dragOverOrderIndex === allIndex ? 'bg-blue-400 dark:bg-blue-600' : ''
                           }`}
-                          style={{ backgroundColor: event.color || '#3b82f6', color: 'white' }}
-                          onClick={(e) => {
+                          onDragOver={(e) => {
+                            e.preventDefault();
                             e.stopPropagation();
-                            onEventClick(event);
+                            setDragOverOrderIndex(allIndex);
                           }}
-                          title={hasStatus ? `상태: ${event.status === 'todo' ? '해야할일' : event.status === 'in_progress' ? '하는중' : '했던일'}` : '상태 없음'}
-                        >
-                          <div className="flex-shrink-0 mt-0.5">{getStatusIcon()}</div>
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium">{event.title}</div>
-                            {event.description && (
-                              <div className="text-sm opacity-90 mt-1">{event.description}</div>
-                            )}
-                            {event.tags && event.tags.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-1.5">
-                                {event.tags.map((tag, idx) => (
-                                  <span
-                                    key={idx}
-                                    className="text-xs px-1.5 py-0.5 bg-white/20 rounded-full"
-                                  >
-                                    {tag}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
+                          onDragLeave={() => {
+                            setDragOverOrderIndex(null);
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (onEventOrderUpdate) {
+                              handleDropForOrder(allIndex);
+                            }
+                          }}
+                        />
                       );
-                    })
-                  ) : (
-                    <div className="text-sm text-gray-400 dark:text-gray-500">일정 없음</div>
-                  )}
-                </div>
+                    })()}
+                    {renderEvent(event, true, index, hasTime)}
+                  </div>
+                );
+              })
+            ) : (
+              <div className={`text-sm text-gray-400 dark:text-gray-500 text-center py-8 ${dragOverNoTimeArea && draggedEventId ? 'hidden' : ''}`}>
+                일정 없음
               </div>
-            </div>
-          );
-        })}
+            )}
+            {/* 마지막 드롭 영역 (모든 일정) */}
+            {draggedEventId && allEventsForLeft.length > 0 && (() => {
+              const sortedAllEvents = sortEvents(allEventsForLeft);
+              const lastIndex = sortedAllEvents.length;
+              
+              return (
+                <div
+                  className={`h-2 -my-1 transition-colors ${
+                    dragOverOrderIndex === lastIndex ? 'bg-blue-400 dark:bg-blue-600' : ''
+                  }`}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setDragOverOrderIndex(lastIndex);
+                  }}
+                  onDragLeave={() => {
+                    setDragOverOrderIndex(null);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (onEventOrderUpdate) {
+                      handleDropForOrder(lastIndex);
+                    }
+                  }}
+                />
+              );
+            })()}
+            {dragOverNoTimeArea && draggedEventId && (
+              <div className="px-3 py-2 rounded border-2 border-dashed border-blue-400 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-sm font-medium text-center">
+                여기에 드롭하여 시간 제거
+              </div>
+            )}
+            {/* 일정 추가 버튼 */}
+            {showAddEventButtons && onAddEvent && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddEvent(date);
+                }}
+                className="w-full mt-2 p-2 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg hover:border-blue-500 dark:hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors flex items-center justify-center gap-2 text-sm text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400"
+                title="일정 추가"
+              >
+                <FiPlus size={16} />
+                <span>일정 추가</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* 오른쪽: 시간이 있는 일정 */}
+        <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+          <div className="bg-gray-100 dark:bg-gray-800 p-3 border-b border-gray-200 dark:border-gray-700">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">시간 일정</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">시간별 일정</p>
+          </div>
+          <div className="max-h-[calc(100vh-300px)] overflow-y-auto">
+            {hours.map(hour => {
+              const hourEvents = sortEvents(getEventsForHour(hour));
+              const isDragOver = dragOverHour === hour;
+              return (
+                <div
+                  key={hour}
+                  className={`border-b border-gray-200 dark:border-gray-700 p-3 min-h-[80px] hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer group transition-colors ${
+                    isDragOver ? 'bg-blue-100 dark:bg-blue-900/30 border-blue-400 dark:border-blue-600' : ''
+                  }`}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setDragOverHour(hour);
+                  }}
+                  onDragLeave={() => {
+                    setDragOverHour(null);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleDrop(hour);
+                  }}
+                  onClick={() => {
+                    const newDate = new Date(date);
+                    newDate.setHours(hour, 0, 0, 0);
+                    onDateClick(newDate);
+                  }}
+                >
+                  <div className="flex gap-4">
+                    <div className="w-16 text-sm text-gray-500 dark:text-gray-400 font-medium">
+                      {hour.toString().padStart(2, '0')}:00
+                    </div>
+                    <div className="flex-1 space-y-2">
+                      {hourEvents.length > 0 ? (
+                        hourEvents.map(event => {
+                          const eventDate = new Date(event.date);
+                          const hasTime = eventDate.getHours() !== 0 || eventDate.getMinutes() !== 0;
+                          return renderEvent(event, true, undefined, hasTime);
+                        })
+                      ) : (
+                        <div className={`text-sm text-gray-400 dark:text-gray-500 ${isDragOver ? 'hidden' : ''}`}>
+                          일정 없음
+                        </div>
+                      )}
+                      {isDragOver && draggedEventId && (
+                        <div className="px-3 py-2 rounded border-2 border-dashed border-blue-400 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-sm font-medium">
+                          여기에 드롭하여 시간 설정
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
     </div>
   );
 }
+
 
