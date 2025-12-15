@@ -3,50 +3,48 @@
 ## 제목
 
 ```
-docs: 활성 사용 문서를 종류별/목적별 폴더 구조로 재구성
+security: Next.js 보안 헤더 설정 및 보안 분석 문서 추가
 ```
 
 ## 본문
 
 ```
-활성 사용 문서들을 docs 폴더로 이동하고 종류별/목적별로 체계적으로 정리
+Next.js 프로젝트에 보안 헤더 설정 추가 및 RSC 취약점(CVE-2025-55182) 대응 가이드 작성
 
 ### 변경 사항
 
-#### 문서 이동
-- 모든 활성 사용 MD 파일을 docs 폴더로 이동
-  - QUICK_START.md → docs/development-guides/quick-start/
-  - DEVELOPMENT_SERVER_GUIDE.md → docs/development-guides/server-management/
-  - CHECK_RUN_STATUS.md → docs/development-guides/status-check/
-  - DEVELOPMENT_GUIDE.md → docs/development-guides/component-usage/
-  - FIREBASE_ENV_SETUP.md → docs/firebase-setup/environment-variables/
-  - FIREBASE_AUTH_SETUP.md → docs/firebase-setup/authentication/
+#### 보안 설정 (next.config.ts)
+- React Strict Mode 활성화
+- 보안 헤더 추가:
+  - Strict-Transport-Security (HSTS): HTTPS 강제
+  - X-Content-Type-Options: MIME 타입 스니핑 방지
+  - X-Frame-Options: 클릭재킹 방지
+  - X-XSS-Protection: 브라우저 XSS 필터 활성화
+  - Referrer-Policy: 정보 유출 방지
+  - Permissions-Policy: 불필요한 브라우저 기능 비활성화
+  - Content-Security-Policy (CSP): XSS 공격 방지
+- poweredByHeader 제거: 서버 정보 노출 방지
 
-#### 폴더 구조 생성
-- development-guides/ (개발 가이드)
-  - quick-start/ (빠른 시작)
-  - server-management/ (서버 관리)
-  - status-check/ (상태 확인)
-  - component-usage/ (컴포넌트 사용법)
+#### 보안 문서 추가 (docs/SECURITY_ANALYSIS.md)
+- 현재 보안 상태 평가
+- CVE-2025-55182 (React2Shell) 대응 현황
+- 배포 시 필요한 추가 보안 조치 가이드
+- RSC 사용 시 주의사항
+- Firestore 보안 규칙 권장사항
+- 보안 점검 체크리스트
 
-- firebase-setup/ (Firebase 설정)
-  - environment-variables/ (환경 변수)
-  - authentication/ (인증 설정)
-
-#### README 파일 추가
-- 각 폴더에 한글 설명이 포함된 README.md 생성
-- docs/README.md 추가 (docs 폴더 소개)
-- docs/FOLDER_STRUCTURE.md 추가 (폴더 구조 상세 설명)
-- docs/MOVEMENT_SUMMARY.md 추가 (이동 완료 보고서)
-
-#### 문서 인덱스 업데이트
-- docs/DOCUMENTATION_INDEX.md 업데이트 (새 폴더 구조 반영)
-- README.md 업데이트 (새 경로 반영)
+### 보안 상태
+- ✅ React 19.2.3 사용 (CVE-2025-55182 패치 포함)
+- ✅ Next.js 16.0.10 최신 버전
+- ✅ Flight 엔드포인트 노출 확인 완료 (404 응답)
+- ✅ 환경 변수 .gitignore 포함
+- ✅ Server Actions 미사용 (취약점 노출 최소화)
 
 ### 개선 효과
-- 체계적인 문서 구조로 접근성 향상
-- 각 폴더의 목적이 README로 명확히 설명됨
-- 유지보수성 향상 (관련 문서들이 한 곳에 모임)
+- 웹 공격(XSS, 클릭재킹 등) 방어 강화
+- 보안 모범 사례 적용
+- 배포 전 보안 체크리스트 제공
+- 지속적인 보안 관리 가이드 제공
 ```
 
 ---
@@ -54,12 +52,12 @@ docs: 활성 사용 문서를 종류별/목적별 폴더 구조로 재구성
 ## 간단 버전 (짧은 커밋 메시지)
 
 ```
-docs: 활성 사용 문서를 종류별/목적별 폴더 구조로 재구성
+security: Next.js 보안 헤더 설정 및 보안 분석 문서 추가
 
-- 모든 활성 사용 MD 파일을 docs 폴더로 이동
-- development-guides와 firebase-setup 폴더로 분류
-- 각 폴더에 README 파일 추가 (한글 설명 포함)
-- 문서 인덱스 및 README 업데이트
+- next.config.ts에 보안 헤더 추가 (HSTS, CSP, XSS 방지 등)
+- docs/SECURITY_ANALYSIS.md 추가 (보안 상태 평가 및 가이드)
+- CVE-2025-55182 대응 현황 문서화
+- 배포 시 보안 조치 체크리스트 제공
 ```
 
 ---
@@ -67,11 +65,10 @@ docs: 활성 사용 문서를 종류별/목적별 폴더 구조로 재구성
 ## 영어 버전
 
 ```
-docs: reorganize active documentation into categorized folder structure
+security: add security headers and security analysis documentation
 
-- Move all active MD files to docs folder
-- Organize by category (development-guides, firebase-setup)
-- Add README files to each folder with Korean descriptions
-- Update documentation index and README
+- Add security headers to next.config.ts (HSTS, CSP, XSS protection, etc.)
+- Add docs/SECURITY_ANALYSIS.md (security status evaluation and guide)
+- Document CVE-2025-55182 response status
+- Provide security checklist for deployment
 ```
-

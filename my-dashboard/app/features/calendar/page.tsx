@@ -50,7 +50,7 @@ export default function CalendarPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [hasAccess, setHasAccess] = useState<boolean | null>(null);
   const [accessError, setAccessError] = useState<string | null>(null);
-  const [feature, setFeature] = useState<{ createdBy?: string } | null>(null);
+  const [feature, setFeature] = useState<{ createdBy?: string; isPublic?: boolean } | null>(null);
   
   // 캘린더 상태
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -144,7 +144,9 @@ export default function CalendarPage() {
 
     const loadEvents = async () => {
       try {
-        const firebaseEvents = await getCalendarEvents(user.uid, featureId);
+        // 공개 기능인지 확인 (featureId가 'calendar'인 경우는 기본 캘린더로 비공개 처리)
+        const isPublic = featureId !== 'calendar' && feature?.isPublic === true;
+        const firebaseEvents = await getCalendarEvents(user.uid, featureId, isPublic);
         // Firebase CalendarEvent를 로컬 CalendarEvent 형식으로 변환
         const convertedEvents: CalendarEvent[] = firebaseEvents.map(event => ({
           id: event.id!,
@@ -167,6 +169,8 @@ export default function CalendarPage() {
     loadEvents();
 
     // 실시간 업데이트 구독
+    // 공개 기능인지 확인 (featureId가 'calendar'인 경우는 기본 캘린더로 비공개 처리)
+    const isPublic = featureId !== 'calendar' && feature?.isPublic === true;
     const unsubscribe = subscribeCalendarEvents(user.uid, featureId, (firebaseEvents) => {
         const convertedEvents: CalendarEvent[] = firebaseEvents.map(event => ({
           id: event.id!,
@@ -181,12 +185,12 @@ export default function CalendarPage() {
           mealOrderIndex: event.mealOrderIndex,
         }));
       setEvents(convertedEvents);
-    });
+    }, isPublic);
 
     return () => {
       unsubscribe();
     };
-  }, [user, featureId, hasAccess]);
+  }, [user, featureId, hasAccess, feature]);
 
   // Firebase에서 캘린더 설정 로드
   useEffect(() => {
@@ -1567,7 +1571,19 @@ export default function CalendarPage() {
                       const weekStart = getWeekStart(currentDate);
                       const weekEnd = new Date(weekStart);
                       weekEnd.setDate(weekEnd.getDate() + 6);
-                      return `${weekStart.getMonth() + 1}/${weekStart.getDate()} - ${weekEnd.getMonth() + 1}/${weekEnd.getDate()}`;
+                      const startYear = weekStart.getFullYear();
+                      const startMonth = weekStart.getMonth() + 1;
+                      const startDay = weekStart.getDate();
+                      const endYear = weekEnd.getFullYear();
+                      const endMonth = weekEnd.getMonth() + 1;
+                      const endDay = weekEnd.getDate();
+                      
+                      // 같은 연도이면 연도 생략
+                      if (startYear === endYear) {
+                        return `${startYear}년 ${startMonth}월 ${startDay}일 - ${endMonth}월 ${endDay}일`;
+                      } else {
+                        return `${startYear}년 ${startMonth}월 ${startDay}일 - ${endYear}년 ${endMonth}월 ${endDay}일`;
+                      }
                     })()}
                     {viewMode === 'day' && `${year}년 ${month + 1}월 ${currentDate.getDate()}일`}
                   </h2>
@@ -1806,8 +1822,8 @@ export default function CalendarPage() {
               })()}
             </div>
 
-            {/* 일괄 작업 패널 (월별 뷰에서만 표시) - 접을 수 있는 아코디언 */}
-            {viewMode === 'month' && (
+            {/* 일괄 작업 패널 (월별/주별 뷰에서만 표시) - 접을 수 있는 아코디언 */}
+            {(viewMode === 'month' || viewMode === 'week') && (
               <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
                 <button
                   onClick={() => setIsBulkActionsOpen(!isBulkActionsOpen)}
@@ -1831,10 +1847,12 @@ export default function CalendarPage() {
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input
                           type="checkbox"
-                          checked={selectedEventIds.size > 0 && selectedEventIds.size === getEventsForMonth(year, month).length}
+                          checked={selectedEventIds.size > 0 && selectedEventIds.size === (viewMode === 'month' ? getEventsForMonth(year, month).length : getEventsForWeek(getWeekStart(currentDate)).length)}
                           onChange={(e) => {
                             if (e.target.checked) {
-                              const filteredEvents = getEventsForMonth(year, month);
+                              const filteredEvents = viewMode === 'month' 
+                                ? getEventsForMonth(year, month)
+                                : getEventsForWeek(getWeekStart(currentDate));
                               setSelectedEventIds(new Set(filteredEvents.map(e => e.id)));
                             } else {
                               setSelectedEventIds(new Set());
@@ -1843,7 +1861,7 @@ export default function CalendarPage() {
                           className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 focus:ring-2"
                         />
                         <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                          전체 선택 ({getEventsForMonth(year, month).length}개)
+                          전체 선택 ({viewMode === 'month' ? getEventsForMonth(year, month).length : getEventsForWeek(getWeekStart(currentDate)).length}개)
                         </span>
                       </label>
                       {selectedEventIds.size > 0 && (
@@ -1977,9 +1995,17 @@ export default function CalendarPage() {
                         <span className="text-sm font-medium text-gray-700 dark:text-gray-300">태그 추가:</span>
                         <div className="flex-1 flex items-center gap-2 flex-wrap">
                           {/* 기존 태그 목록에서 선택 */}
-                          {getTagsForMonth(year, month).length > 0 && (
+                          {(() => {
+                            const tags = viewMode === 'month' 
+                              ? getTagsForMonth(year, month)
+                              : getTagsForWeek(getWeekStart(currentDate));
+                            return tags.length > 0;
+                          })() && (
                             <div className="flex gap-1 flex-wrap">
-                              {getTagsForMonth(year, month).map(({ tag }) => (
+                              {(viewMode === 'month' 
+                                ? getTagsForMonth(year, month)
+                                : getTagsForWeek(getWeekStart(currentDate))
+                              ).map(({ tag }) => (
                                 <button
                                   key={tag}
                                   type="button"
@@ -2142,8 +2168,9 @@ export default function CalendarPage() {
                       </Button>
                     </div>
 
-                    {/* 표시할 항목 수 설정 섹션 */}
-                    <div className="flex flex-col gap-2 border-t border-blue-200 dark:border-blue-700 pt-3">
+                    {/* 표시할 항목 수 설정 섹션 (월보기에서만 표시) */}
+                    {viewMode === 'month' && (
+                      <div className="flex flex-col gap-2 border-t border-blue-200 dark:border-blue-700 pt-3">
                       <div className="flex items-center gap-3 flex-wrap">
                         <span className="text-sm font-medium text-gray-700 dark:text-gray-300">표시할 항목 수:</span>
                         <div className="flex items-center gap-2">
@@ -2190,7 +2217,8 @@ export default function CalendarPage() {
                         <FiInfo size={12} />
                         펼치지 않았을 때 캘린더에 표시할 최대 일정 개수를 설정합니다.
                       </p>
-                    </div>
+                      </div>
+                    )}
 
                     {/* 일정 연속 복제 섹션 */}
                     <div className="flex flex-col gap-2 border-t border-blue-200 dark:border-blue-700 pt-3">
@@ -2297,7 +2325,17 @@ export default function CalendarPage() {
                   return newSet;
                 });
               }} isMealOrderEnabled={isMealOrderEnabled} />}
-              {viewMode === 'week' && <WeekView currentDate={currentDate} events={getEventsForWeek(getWeekStart(currentDate))} onDateClick={handleDayView} onAddEvent={handleAddEventInWeek} onEventClick={handleEditEvent} onEventDelete={handleDeleteEvent} showAddEventButtons={showAddEventButtons} isMealOrderEnabled={isMealOrderEnabled} />}
+              {viewMode === 'week' && <WeekView currentDate={currentDate} events={getEventsForWeek(getWeekStart(currentDate))} onDateClick={handleDayView} onAddEvent={handleAddEventInWeek} onEventClick={handleEditEvent} onEventDelete={handleDeleteEvent} showAddEventButtons={showAddEventButtons} selectedEventIds={selectedEventIds} onToggleEventSelect={(eventId) => {
+                setSelectedEventIds(prev => {
+                  const newSet = new Set(prev);
+                  if (newSet.has(eventId)) {
+                    newSet.delete(eventId);
+                  } else {
+                    newSet.add(eventId);
+                  }
+                  return newSet;
+                });
+              }} isMealOrderEnabled={isMealOrderEnabled} />}
               {viewMode === 'day' && <DayView date={currentDate} events={getEventsForDate(currentDate)} onDateClick={handleDateClick} onEventClick={handleEditEvent} onEventDelete={handleDeleteEvent} onAddEvent={(date) => {
                 setSelectedDate(date);
                 setIsEventModalOpen(true);
@@ -3561,9 +3599,7 @@ function YearView({ year, events, onDateClick, onEventClick, onEventDelete, onMo
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (confirm('정말 이 일정을 삭제하시겠습니까?')) {
-                          onEventDelete(event.id);
-                        }
+                        onEventDelete(event.id);
                       }}
                       className="opacity-0 group-hover:opacity-100 transition-opacity ml-1 hover:bg-white/20 rounded p-0.5"
                       title="삭제"
@@ -4107,9 +4143,7 @@ function MonthView({ currentDate, events, onDateClick, onEventClick, onEventDele
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    if (confirm('정말 이 일정을 삭제하시겠습니까?')) {
-                                      onEventDelete(event.id);
-                                    }
+                                    onEventDelete(event.id);
                                   }}
                                   className="opacity-0 group-hover:opacity-100 transition-opacity ml-1 hover:bg-white/20 rounded p-0.5"
                                   title="삭제"
@@ -4169,10 +4203,12 @@ interface WeekViewProps {
   onEventClick: (event: CalendarEvent) => void;
   onEventDelete: (eventId: string) => void;
   showAddEventButtons?: boolean;
+  selectedEventIds?: Set<string>;
+  onToggleEventSelect?: (eventId: string) => void;
   isMealOrderEnabled?: boolean;
 }
 
-function WeekView({ currentDate, events, onDateClick, onAddEvent, onEventClick, onEventDelete, showAddEventButtons = true, isMealOrderEnabled = false }: WeekViewProps) {
+function WeekView({ currentDate, events, onDateClick, onAddEvent, onEventClick, onEventDelete, showAddEventButtons = true, selectedEventIds = new Set(), onToggleEventSelect, isMealOrderEnabled = false }: WeekViewProps) {
   const getWeekStart = (date: Date) => {
     const d = new Date(date);
     const day = d.getDay();
@@ -4314,6 +4350,8 @@ function WeekView({ currentDate, events, onDateClick, onAddEvent, onEventClick, 
             <div className="space-y-2">
               {dayEvents.map(event => {
                 const hasStatus = !!event.status;
+                const isSelected = selectedEventIds.has(event.id);
+                const showCheckbox = onToggleEventSelect !== undefined;
                 const getStatusIcon = () => {
                   if (!hasStatus) return <FiMinus size={12} className="opacity-60" />;
                   if (event.status === 'done') return <FiCheckCircle size={12} />;
@@ -4323,13 +4361,33 @@ function WeekView({ currentDate, events, onDateClick, onAddEvent, onEventClick, 
                 return (
                   <div
                     key={event.id}
-                    className={`text-xs px-2 py-1 rounded cursor-pointer hover:opacity-80 flex items-start gap-1.5 ${
+                    className={`group text-xs px-2 py-1 rounded cursor-pointer hover:opacity-80 flex items-start gap-1.5 ${
                       hasStatus ? '' : 'border border-dashed border-white/30'
-                    }`}
+                    } ${isSelected ? 'ring-2 ring-yellow-400 ring-offset-1' : ''}`}
                     style={{ backgroundColor: event.color || '#3b82f6', color: 'white' }}
-                    onClick={() => onEventClick(event)}
+                    onClick={(e) => {
+                      if (showCheckbox && (e.target as HTMLElement).closest('.event-checkbox')) {
+                        return; // 체크박스 클릭은 별도 처리
+                      }
+                      onEventClick(event);
+                    }}
                     title={hasStatus ? `상태: ${event.status === 'todo' ? '해야할일' : event.status === 'in_progress' ? '하는중' : '했던일'}` : '상태 없음'}
                   >
+                    {showCheckbox && (
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          if (onToggleEventSelect) {
+                            onToggleEventSelect(event.id);
+                          }
+                        }}
+                        className="event-checkbox w-4 h-4 rounded border-2 border-white bg-white/20 checked:bg-white text-blue-600 focus:ring-2 focus:ring-white cursor-pointer flex-shrink-0 mt-0.5"
+                        style={{ minWidth: '16px', minHeight: '16px' }}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    )}
                     <div className="flex-shrink-0 mt-0.5">{getStatusIcon()}</div>
                     <div className="flex-1 min-w-0">
                       <div className="font-medium truncate">{event.title}</div>
@@ -4352,9 +4410,7 @@ function WeekView({ currentDate, events, onDateClick, onAddEvent, onEventClick, 
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (confirm('정말 이 일정을 삭제하시겠습니까?')) {
-                          onEventDelete(event.id);
-                        }
+                        onEventDelete(event.id);
                       }}
                       className="opacity-0 group-hover:opacity-100 transition-opacity ml-1 hover:bg-white/20 rounded p-0.5 flex-shrink-0"
                       title="삭제"
@@ -4663,9 +4719,7 @@ function DayView({ date, events, onDateClick, onEventClick, onEventDelete, onAdd
         <button
           onClick={(e) => {
             e.stopPropagation();
-            if (confirm('정말 이 일정을 삭제하시겠습니까?')) {
-              onEventDelete(event.id);
-            }
+            onEventDelete(event.id);
           }}
           className="opacity-0 group-hover:opacity-100 transition-opacity ml-1 hover:bg-white/20 rounded p-0.5 flex-shrink-0"
           title="삭제"

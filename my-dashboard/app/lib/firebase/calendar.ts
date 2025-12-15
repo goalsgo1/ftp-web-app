@@ -78,13 +78,25 @@ export const addCalendarEvent = async (
 
 // 사용자의 캘린더 이벤트 목록 가져오기
 export const getCalendarEvents = async (
-  userId: string,
-  featureId?: string
+  userId: string | null,
+  featureId?: string,
+  isPublic?: boolean
 ): Promise<CalendarEvent[]> => {
   try {
     let q;
     
-    if (featureId) {
+    // 공개 기능인 경우 userId 필터 제거 (모든 사용자의 이벤트 조회)
+    if (featureId && isPublic) {
+      q = query(
+        collection(db, 'calendarEvents'),
+        where('featureId', '==', featureId),
+        orderBy('date', 'desc')
+      );
+    } else if (featureId) {
+      // 비공개 기능인 경우 userId로 필터링
+      if (!userId) {
+        throw new Error('사용자 ID가 필요합니다.');
+      }
       q = query(
         collection(db, 'calendarEvents'),
         where('userId', '==', userId),
@@ -92,6 +104,10 @@ export const getCalendarEvents = async (
         orderBy('date', 'desc')
       );
     } else {
+      // featureId가 없는 경우 (기본 캘린더)
+      if (!userId) {
+        throw new Error('사용자 ID가 필요합니다.');
+      }
       q = query(
         collection(db, 'calendarEvents'),
         where('userId', '==', userId),
@@ -292,16 +308,33 @@ export const getCalendarEventsByDateRange = async (
 
 // 실시간으로 캘린더 이벤트 감지
 export const subscribeCalendarEvents = (
-  userId: string,
+  userId: string | null,
   featureId: string,
-  callback: (events: CalendarEvent[]) => void
+  callback: (events: CalendarEvent[]) => void,
+  isPublic?: boolean
 ): Unsubscribe => {
-  const q = query(
-    collection(db, 'calendarEvents'),
-    where('userId', '==', userId),
-    where('featureId', '==', featureId),
-    orderBy('date', 'desc')
-  );
+  // 공개 기능인 경우 userId 필터 제거 (모든 사용자의 이벤트 조회)
+  let q;
+  if (isPublic) {
+    q = query(
+      collection(db, 'calendarEvents'),
+      where('featureId', '==', featureId),
+      orderBy('date', 'desc')
+    );
+  } else {
+    // 비공개 기능인 경우 userId로 필터링
+    if (!userId) {
+      console.error('사용자 ID가 필요합니다.');
+      callback([]);
+      return () => {}; // 빈 unsubscribe 함수 반환
+    }
+    q = query(
+      collection(db, 'calendarEvents'),
+      where('userId', '==', userId),
+      where('featureId', '==', featureId),
+      orderBy('date', 'desc')
+    );
+  }
   
   return onSnapshot(
     q,

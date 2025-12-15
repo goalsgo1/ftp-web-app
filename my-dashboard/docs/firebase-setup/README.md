@@ -20,6 +20,12 @@
 **필수**: 로그인 기능 사용 시 필수  
 **파일**: `FIREBASE_AUTH_SETUP.md`
 
+### 과금 관리 (billing)
+**목적**: Firebase 과금 방지 및 비용 관리  
+**대상**: 모든 개발자  
+**필수**: Firebase 사용 시 권장  
+**파일**: `FIREBASE_BILLING_PROTECTION.md`
+
 ---
 
 ## 🔥 설정 순서
@@ -34,6 +40,11 @@ Firebase 기능을 사용하려면 다음 순서로 설정하세요:
    - Firebase Console에서 이메일/비밀번호 인증 활성화
    - 테스트 계정 생성
 
+3. **과금 방지 설정** → `billing/FIREBASE_BILLING_PROTECTION.md` (권장)
+   - 무료 플랜 유지 확인
+   - 사용량 모니터링 설정
+   - 예산 알림 설정
+
 ---
 
 ## ✅ 완료 체크리스트
@@ -43,6 +54,7 @@ Firebase 기능을 사용하려면 다음 순서로 설정하세요:
 - [ ] Firebase Console에서 인증 활성화 완료
 - [ ] 개발 서버 재시작 완료
 - [ ] 로그인 기능 테스트 완료
+- [ ] 과금 방지 설정 완료 (권장)
 
 ---
 
