@@ -275,16 +275,16 @@ export async function searchNaverNewsByKeyword(
   maxResults: number = 30
 ): Promise<Array<Omit<NewsArticle, 'id' | 'featureId' | 'userId' | 'createdAt' | 'updatedAt'>>> {
   const articles: Array<Omit<NewsArticle, 'id' | 'featureId' | 'userId' | 'createdAt' | 'updatedAt'>> = [];
-  
+
   try {
     const axios = (await import('axios')).default;
     const cheerio = await import('cheerio');
-    
+
     // 네이버 뉴스 검색 URL (최신순 정렬)
     const searchUrl = `https://search.naver.com/search.naver?where=news&query=${encodeURIComponent(keyword)}&sm=tab_jum&sort=1`;
-    
+
     console.log(`네이버 뉴스 검색 시작: "${keyword}"`);
-    
+
     const response = await axios.get(searchUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -293,44 +293,77 @@ export async function searchNaverNewsByKeyword(
       },
       timeout: 15000,
     });
-    
+
     const $ = cheerio.load(response.data);
-    
+
     // 네이버 뉴스 검색 결과 링크 추출
     const links: Array<{ url: string; title: string }> = [];
-    
+
+    // 디버깅: HTML 구조 확인
+    console.log(`검색 페이지 로드 완료 (HTML 길이: ${response.data.length}자)`);
+
     // 방법 1: .news_wrap > a.news_tit (최신 네이버 뉴스 검색 구조)
     $('.news_wrap').each((_idx: number, element: any) => {
       if (links.length >= maxResults) return false;
-      
+
       const $wrap = $(element);
       const $link = $wrap.find('a.news_tit');
       let href = $link.attr('href');
       const title = $link.text().trim();
-      
+
       if (!href || !title || title.length < 5) return;
-      
+
       // 네이버 뉴스 링크만 수집 (news.naver.com/article)
       if (!href.includes('news.naver.com/article')) return;
-      
+
       // 절대 URL로 변환
       if (!href.startsWith('http')) {
         href = `https://${href}`;
       }
-      
+
       // 중복 체크
       if (links.find(l => l.url === href)) return;
-      
+
       links.push({ url: href, title });
     });
-    
+
+    // 방법 2: 대체 선택자 시도 (news_area)
+    if (links.length === 0) {
+      console.log(`방법1 실패, 대체 선택자 시도...`);
+
+      $('a[href*="news.naver.com/article"]').each((_idx: number, element: any) => {
+        if (links.length >= maxResults) return false;
+
+        const $link = $(element);
+        let href = $link.attr('href');
+        const title = $link.text().trim();
+
+        if (!href || !title || title.length < 5) return;
+
+        // 절대 URL로 변환
+        if (!href.startsWith('http')) {
+          href = href.startsWith('//') ? `https:${href}` : `https://news.naver.com${href}`;
+        }
+
+        // 중복 체크
+        if (links.find(l => l.url === href)) return;
+
+        links.push({ url: href, title });
+      });
+    }
+
     console.log(`검색 결과 링크 추출: ${links.length}개`);
-    
+
+    // 키워드 정규화 (대소문자 구분 없이 검색)
+    const normalizedKeyword = keyword.trim().toLowerCase();
+
     // 각 기사의 본문 크롤링 (병렬 처리)
     const batchSize = 5;
+    let filteredOutCount = 0; // 키워드 불일치로 제외된 기사 수
+
     for (let i = 0; i < links.length; i += batchSize) {
       const batch = links.slice(i, i + batchSize);
-      
+
       await Promise.all(batch.map(async ({ url, title }) => {
         try {
           // 중복 체크
@@ -346,30 +379,30 @@ export async function searchNaverNewsByKeyword(
               },
               timeout: 8000,
             });
-            
+
             const $article = cheerio.load(articleResponse.data);
-            
+
             // 네이버 뉴스 기사 본문 추출 (여러 선택자 시도)
             let articleContent = '';
-            
+
             // 방법 1: #newsEndContents (일반 기사)
             articleContent = $article('#newsEndContents').text().trim();
-            
+
             // 방법 2: .go_trans._article_content (번역 기사)
             if (!articleContent || articleContent.length < 50) {
               articleContent = $article('.go_trans._article_content').text().trim();
             }
-            
+
             // 방법 3: ._article_body_contents (기타 구조)
             if (!articleContent || articleContent.length < 50) {
               articleContent = $article('._article_body_contents').text().trim();
             }
-            
+
             // 방법 4: #articleBodyContents (대체 구조)
             if (!articleContent || articleContent.length < 50) {
               articleContent = $article('#articleBodyContents').text().trim();
             }
-            
+
             // 본문 정리 (제목 + 본문 조합)
             if (articleContent && articleContent.length > 50) {
               content = `${title} ${articleContent.replace(/\s+/g, ' ').substring(0, 2000)}`;
@@ -378,13 +411,25 @@ export async function searchNaverNewsByKeyword(
             }
           } catch (contentError: any) {
             console.warn(`기사 본문 크롤링 실패 (${url.substring(0, 50)}...):`, contentError.message);
-            // 본문 크롤링 실패해도 제목만으로 저장 (키워드는 검색 결과에 이미 포함되어 있음)
+            // 본문 크롤링 실패해도 제목만으로 저장 시도
+          }
+
+          // 키워드 검증: 제목 또는 본문에 키워드가 포함되어 있는지 확인
+          const titleLower = title.toLowerCase();
+          const contentLower = content.toLowerCase();
+          const hasKeyword = titleLower.includes(normalizedKeyword) || contentLower.includes(normalizedKeyword);
+
+          if (!hasKeyword) {
+            // 키워드가 포함되지 않은 기사는 제외
+            filteredOutCount++;
+            console.log(`키워드 불일치로 제외: "${title.substring(0, 50)}..."`);
+            return;
           }
 
           articles.push({
             title,
             url,
-            content, // 제목 + 본문 (키워드가 포함되어 있음)
+            content, // 제목 + 본문 (키워드 검증 완료)
             source: 'naver',
             originalCategory: '기타',
             publishedAt: new Date(),
@@ -395,18 +440,18 @@ export async function searchNaverNewsByKeyword(
           console.warn(`기사 처리 실패 (${url.substring(0, 50)}...):`, error.message);
         }
       }));
-      
+
       // 배치 사이 딜레이 (서버 부하 방지)
       if (i + batchSize < links.length) {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
-    
-    console.log(`키워드 검색 완료: "${keyword}" → ${articles.length}개 기사 수집`);
+
+    console.log(`키워드 검색 완료: "${keyword}" → ${links.length}개 검색, ${articles.length}개 수집 (${filteredOutCount}개 제외)`);
   } catch (error: any) {
     console.error(`네이버 뉴스 키워드 검색 실패 (${keyword}):`, error.message);
   }
-  
+
   return articles;
 }
 
@@ -421,22 +466,22 @@ export async function scrapeAllNews(
   // 키워드가 있으면 키워드 검색 모드 (더 많은 결과를 위해)
   if (keywords && keywords.length > 0) {
     console.log(`키워드 검색 모드: ${keywords.join(', ')}`);
-    
+
     // 각 키워드별로 검색
     for (const keyword of keywords) {
       if (sources.includes('naver')) {
         const searchResults = await searchNaverNewsByKeyword(keyword, 30);
         allArticles.push(...searchResults);
-        
+
         // Rate limiting
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
-    
-    // 키워드 검색 결과가 있으면 반환
-    if (allArticles.length > 0) {
-      return allArticles;
-    }
+
+    // 키워드 검색 모드에서는 결과가 0개여도 일반 모드로 폴백하지 않음
+    // (키워드와 무관한 기사를 가져오는 것을 방지)
+    console.log(`키워드 검색 모드 완료: ${allArticles.length}개 기사 수집`);
+    return allArticles;
   }
 
   // 키워드가 없으면 기존 방식 (카테고리별 최신 기사)

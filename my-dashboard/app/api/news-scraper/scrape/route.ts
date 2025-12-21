@@ -53,20 +53,20 @@ export async function POST(request: NextRequest) {
         if (!article.contentHash) return true;
         return !existingHashes.has(article.contentHash);
       });
-      
-      // 키워드 필터링 (키워드 검색 모드가 아닌 경우에만 적용)
-      // 키워드 검색 모드에서는 이미 키워드가 포함된 기사만 가져왔으므로 필터링 불필요
-      if (!isKeywordSearchMode && keywords && Array.isArray(keywords) && keywords.length > 0) {
-        // 키워드 정규화 (공백 제거만, 한글은 대소문자 구분 없음)
+
+      // 키워드 필터링 (모든 모드에서 적용 - 이중 검증)
+      // 키워드 검색 모드에서도 필터링을 수행하여 검색 결과의 정확도를 보장
+      if (keywords && Array.isArray(keywords) && keywords.length > 0) {
+        // 키워드 정규화 (공백 제거 + 대소문자 변환)
         const normalizedKeywords = keywords
-          .map(k => k.trim())
+          .map(k => k.trim().toLowerCase())
           .filter(k => k.length > 0);
-        
+
         if (normalizedKeywords.length > 0) {
-          console.log(`키워드 필터링 시작: ${normalizedKeywords.join(', ')}`);
+          console.log(`키워드 필터링 시작: ${normalizedKeywords.join(', ')} (검색 모드: ${isKeywordSearchMode ? 'ON' : 'OFF'})`);
           console.log(`필터링 전 기사 수: ${newArticles.length}개`);
           const beforeCount = newArticles.length;
-          
+
           // 디버깅: 샘플 기사 확인 (최대 5개)
           const sampleSize = Math.min(5, newArticles.length);
           console.log(`\n=== 샘플 기사 확인 (${sampleSize}개) ===`);
@@ -75,32 +75,32 @@ export async function POST(request: NextRequest) {
             console.log(`[${i}] 제목: "${article.title}"`);
             console.log(`    내용(50자): "${(article.content || '').substring(0, 50)}"`);
           }
-          
+
           newArticles = newArticles.filter((article, index) => {
-            // 한글 키워드는 대소문자 변환 불필요, 공백 제거만
-            const title = article.title.trim();
-            const content = (article.content || '').trim();
-            
+            // 대소문자 구분 없이 비교
+            const title = article.title.trim().toLowerCase();
+            const content = (article.content || '').trim().toLowerCase();
+
             // 제목이나 내용에 키워드가 하나라도 포함되어 있으면 포함
             const matches = normalizedKeywords.some(keyword => {
               const titleMatch = title.includes(keyword);
               const contentMatch = content.includes(keyword);
               return titleMatch || contentMatch;
             });
-            
+
             // 디버깅: 매칭 결과 로그 (처음 10개만)
             if (index < 10) {
-              const matchedKeyword = normalizedKeywords.find(kw => 
+              const matchedKeyword = normalizedKeywords.find(kw =>
                 title.includes(kw) || content.includes(kw)
               );
-              console.log(`[${index}] "${title.substring(0, 40)}...": 매칭=${matches}${matchedKeyword ? ` (키워드: ${matchedKeyword})` : ''}`);
+              console.log(`[${index}] "${article.title.substring(0, 40)}...": 매칭=${matches}${matchedKeyword ? ` (키워드: ${matchedKeyword})` : ''}`);
             }
-            
+
             return matches;
           });
-          
+
           console.log(`\n키워드 필터링 후: ${beforeCount}개 → ${newArticles.length}개 기사`);
-          
+
           // 키워드 필터링으로 모든 기사가 제외된 경우 경고 및 상세 로그
           if (newArticles.length === 0 && beforeCount > 0) {
             console.warn(`\n⚠️ 경고: 키워드 "${normalizedKeywords.join(', ')}"가 기사에 포함되지 않아 모든 기사가 제외되었습니다.`);
