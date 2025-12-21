@@ -299,6 +299,9 @@ export async function searchNaverNewsByKeyword(
     // 네이버 뉴스 검색 결과 링크 추출
     const links: Array<{ url: string; title: string }> = [];
 
+    // 디버깅: HTML 구조 확인
+    console.log(`검색 페이지 로드 완료 (HTML 길이: ${response.data.length}자)`);
+
     // 방법 1: .news_wrap > a.news_tit (최신 네이버 뉴스 검색 구조)
     $('.news_wrap').each((_idx: number, element: any) => {
       if (links.length >= maxResults) return false;
@@ -323,6 +326,31 @@ export async function searchNaverNewsByKeyword(
 
       links.push({ url: href, title });
     });
+
+    // 방법 2: 대체 선택자 시도 (news_area)
+    if (links.length === 0) {
+      console.log(`방법1 실패, 대체 선택자 시도...`);
+
+      $('a[href*="news.naver.com/article"]').each((_idx: number, element: any) => {
+        if (links.length >= maxResults) return false;
+
+        const $link = $(element);
+        let href = $link.attr('href');
+        const title = $link.text().trim();
+
+        if (!href || !title || title.length < 5) return;
+
+        // 절대 URL로 변환
+        if (!href.startsWith('http')) {
+          href = href.startsWith('//') ? `https:${href}` : `https://news.naver.com${href}`;
+        }
+
+        // 중복 체크
+        if (links.find(l => l.url === href)) return;
+
+        links.push({ url: href, title });
+      });
+    }
 
     console.log(`검색 결과 링크 추출: ${links.length}개`);
 
@@ -438,22 +466,22 @@ export async function scrapeAllNews(
   // 키워드가 있으면 키워드 검색 모드 (더 많은 결과를 위해)
   if (keywords && keywords.length > 0) {
     console.log(`키워드 검색 모드: ${keywords.join(', ')}`);
-    
+
     // 각 키워드별로 검색
     for (const keyword of keywords) {
       if (sources.includes('naver')) {
         const searchResults = await searchNaverNewsByKeyword(keyword, 30);
         allArticles.push(...searchResults);
-        
+
         // Rate limiting
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
-    
-    // 키워드 검색 결과가 있으면 반환
-    if (allArticles.length > 0) {
-      return allArticles;
-    }
+
+    // 키워드 검색 모드에서는 결과가 0개여도 일반 모드로 폴백하지 않음
+    // (키워드와 무관한 기사를 가져오는 것을 방지)
+    console.log(`키워드 검색 모드 완료: ${allArticles.length}개 기사 수집`);
+    return allArticles;
   }
 
   // 키워드가 없으면 기존 방식 (카테고리별 최신 기사)
