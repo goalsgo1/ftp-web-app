@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { FiFileText, FiSearch, FiFilter, FiTrendingUp, FiClock, FiTag, FiExternalLink, FiStar, FiCalendar, FiRefreshCw, FiSettings, FiZap, FiEdit2, FiX } from 'react-icons/fi';
+import { FiFileText, FiSearch, FiFilter, FiTrendingUp, FiClock, FiTag, FiExternalLink, FiStar, FiCalendar, FiRefreshCw, FiSettings, FiZap, FiEdit2, FiX, FiTrash2 } from 'react-icons/fi';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -16,25 +16,25 @@ import { ErrorState } from '@/components/ui/ErrorState';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { onAuthChange, getCurrentUser } from '@/lib/firebase';
 import { getFeatureById, updateFeature, type Feature } from '@/lib/firebase/features';
-import { 
-  getNewsArticles, 
+import {
+  getNewsArticles,
   getNewsStatistics,
   type NewsArticle,
-  type NewsStatistics 
+  type NewsStatistics
 } from '@/lib/firebase/newsScraper';
 import type { User } from 'firebase/auth';
 
 export default function NewsScraperPage() {
   const searchParams = useSearchParams();
   const featureId = searchParams.get('featureId') || searchParams.get('id') || 'news-scraper';
-  
+
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [hasAccess, setHasAccess] = useState<boolean | null>(null);
   const [accessError, setAccessError] = useState<string | null>(null);
   const [feature, setFeature] = useState<Feature | null>(null);
   const [scrapingKeywords, setScrapingKeywords] = useState<string[]>([]);
-  
+
   // 뉴스 관련 상태
   const [articles, setArticles] = useState<NewsArticle[]>([]);
   const [filteredArticles, setFilteredArticles] = useState<NewsArticle[]>([]);
@@ -49,7 +49,7 @@ export default function NewsScraperPage() {
   const [isScrapeConfirmModalOpen, setIsScrapeConfirmModalOpen] = useState(false);
   const [editingKeywords, setEditingKeywords] = useState<string[]>([]);
   const [newKeywordInput, setNewKeywordInput] = useState('');
-  
+
   // 통계
   const [stats, setStats] = useState<NewsStatistics>({
     totalArticles: 0,
@@ -71,7 +71,7 @@ export default function NewsScraperPage() {
 
       try {
         const featureData = await getFeatureById(featureId);
-        
+
         if (!featureData) {
           setHasAccess(false);
           setAccessError('존재하지 않는 기능입니다.');
@@ -80,7 +80,7 @@ export default function NewsScraperPage() {
         }
 
         setFeature(featureData);
-        
+
         // 키워드 설정
         if (featureData.newsKeywords && featureData.newsKeywords.length > 0) {
           setScrapingKeywords(featureData.newsKeywords);
@@ -89,7 +89,7 @@ export default function NewsScraperPage() {
         }
 
         const currentUser = getCurrentUser();
-        
+
         if (featureData.isPublic) {
           setHasAccess(true);
           return;
@@ -135,7 +135,7 @@ export default function NewsScraperPage() {
     const loadArticles = async () => {
       try {
         setIsLoading(true);
-        
+
         // Firebase에서 뉴스 목록 가져오기
         const loadedArticles = await getNewsArticles(featureId, {
           category: selectedCategory !== 'all' ? selectedCategory as any : undefined,
@@ -144,7 +144,7 @@ export default function NewsScraperPage() {
 
         setArticles(loadedArticles);
         setFilteredArticles(loadedArticles);
-        
+
         // 통계 데이터 가져오기
         const statistics = await getNewsStatistics(featureId);
         setStats(statistics);
@@ -190,14 +190,20 @@ export default function NewsScraperPage() {
 
   // 카테고리 목록 (필터링용 - 기사 표시용)
   const categories = ['all', 'IT', '경제', '정치', '사회', '기타'];
-  
+
+  // 검색 초기화
+  const handleClearSearch = () => {
+    setSearchTerm('');
+    setSelectedCategory('all');
+  };
+
   // 키워드 수정 모달 열기
   const handleOpenKeywordModal = () => {
     setEditingKeywords([...scrapingKeywords]);
     setNewKeywordInput('');
     setIsKeywordModalOpen(true);
   };
-  
+
   // 키워드 추가
   const handleAddKeyword = () => {
     const keyword = newKeywordInput.trim();
@@ -206,25 +212,25 @@ export default function NewsScraperPage() {
       setNewKeywordInput('');
     }
   };
-  
+
   // 키워드 제거
   const handleRemoveKeyword = (keyword: string) => {
     setEditingKeywords(editingKeywords.filter(k => k !== keyword));
   };
-  
+
   // 키워드 저장
   const handleSaveKeywords = async () => {
     if (!user || !feature || !feature.id) {
       alert('로그인이 필요합니다.');
       return;
     }
-    
+
     try {
       // Feature 업데이트
       await updateFeature(feature.id, {
         newsKeywords: editingKeywords.length > 0 ? editingKeywords : [],
       });
-      
+
       // Feature 다시 로드하여 최신 정보 반영
       const updatedFeature = await getFeatureById(feature.id);
       if (updatedFeature) {
@@ -239,9 +245,9 @@ export default function NewsScraperPage() {
         // Feature 로드 실패 시 로컬 상태만 업데이트
         setScrapingKeywords(editingKeywords);
       }
-      
+
       setIsKeywordModalOpen(false);
-      
+
       alert('설정이 저장되었습니다.');
     } catch (error: any) {
       console.error('설정 저장 실패:', error);
@@ -301,7 +307,7 @@ export default function NewsScraperPage() {
 
     try {
       setAnalyzingArticleId(articleId);
-      
+
       const response = await fetch('/api/agents/analyze-article', {
         method: 'POST',
         headers: {
@@ -320,11 +326,11 @@ export default function NewsScraperPage() {
         });
         setArticles(loadedArticles);
         setFilteredArticles(loadedArticles);
-        
+
         // 통계 새로고침
         const statistics = await getNewsStatistics(featureId);
         setStats(statistics);
-        
+
         alert('분석 완료!');
       } else {
         alert(`분석 실패: ${result.error}`);
@@ -352,7 +358,7 @@ export default function NewsScraperPage() {
 
     try {
       setIsBatchAnalyzing(true);
-      
+
       const response = await fetch('/api/news-scraper/analyze-batch', {
         method: 'POST',
         headers: {
@@ -369,7 +375,7 @@ export default function NewsScraperPage() {
 
       if (result.success) {
         alert(`분석 완료!\n분석됨: ${result.analyzed}개\n총: ${result.total}개\n예상 비용: $${result.totalCost.toFixed(4)}`);
-        
+
         // 목록 새로고침
         const loadedArticles = await getNewsArticles(featureId, {
           category: selectedCategory !== 'all' ? selectedCategory as any : undefined,
@@ -377,7 +383,7 @@ export default function NewsScraperPage() {
         });
         setArticles(loadedArticles);
         setFilteredArticles(loadedArticles);
-        
+
         // 통계 새로고침
         const statistics = await getNewsStatistics(featureId);
         setStats(statistics);
@@ -415,7 +421,7 @@ export default function NewsScraperPage() {
 
     try {
       setIsScraping(true);
-      
+
       const response = await fetch('/api/news-scraper/scrape', {
         method: 'POST',
         headers: {
@@ -439,7 +445,7 @@ export default function NewsScraperPage() {
           message += `\n\n⚠️ ${result.warnings.join('\n')}`;
         }
         alert(message);
-        
+
         // 목록 새로고침
         const loadedArticles = await getNewsArticles(featureId, {
           category: selectedCategory !== 'all' ? selectedCategory as any : undefined,
@@ -447,7 +453,7 @@ export default function NewsScraperPage() {
         });
         setArticles(loadedArticles);
         setFilteredArticles(loadedArticles);
-        
+
         // 통계 새로고침
         const statistics = await getNewsStatistics(featureId);
         setStats(statistics);
@@ -486,26 +492,27 @@ export default function NewsScraperPage() {
     <DashboardLayout>
       <PageLayout>
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div className="flex-1">
+          {/* 헤더 및 액션 버튼 */}
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="flex-1 min-w-0">
               <PageHeader
                 title={feature?.name || "뉴스 스크래퍼"}
-                description={feature?.description || "AI 기반 뉴스 자동 수집 및 분석 대시보드"}
+                description={feature?.description || "AI 기반 뉴스 자동 수집 및 분석"}
               />
               {/* 수집 키워드 태그 */}
               {scrapingKeywords.length > 0 && (
                 <div className="mt-3">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm text-gray-500 dark:text-gray-400">수집 키워드:</span>
+                    <span className="text-sm font-medium text-gray-600 dark:text-gray-400">키워드:</span>
                     {scrapingKeywords.map((keyword) => (
-                      <Badge key={keyword} variant="default" className="bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">
+                      <Badge key={keyword} variant="default" className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium">
                         {keyword}
                       </Badge>
                     ))}
                     {user && feature && (feature.createdBy === user.uid || feature.isPublic) && (
                       <button
                         onClick={handleOpenKeywordModal}
-                        className="inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+                        className="inline-flex items-center gap-1 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium transition-colors"
                       >
                         <FiEdit2 size={14} />
                         수정
@@ -518,10 +525,10 @@ export default function NewsScraperPage() {
                 <div className="mt-3">
                   <button
                     onClick={handleOpenKeywordModal}
-                    className="inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+                    className="inline-flex items-center gap-1 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium transition-colors"
                   >
                     <FiEdit2 size={14} />
-                    키워드 추가
+                    키워드 설정
                   </button>
                 </div>
               )}
@@ -534,7 +541,7 @@ export default function NewsScraperPage() {
               disabled={isBatchAnalyzing}
               icon={<FiZap size={18} className={isBatchAnalyzing ? 'animate-pulse' : ''} />}
             >
-              {isBatchAnalyzing ? '분석 중...' : '전체 분석'}
+              {isBatchAnalyzing ? '분석 중...' : 'AI 분석'}
             </Button>
             <Button
               variant="primary"
@@ -542,12 +549,12 @@ export default function NewsScraperPage() {
               disabled={isScraping}
               icon={<FiRefreshCw size={18} className={isScraping ? 'animate-spin' : ''} />}
             >
-              {isScraping ? '수집 중...' : '지금 수집하기'}
+              {isScraping ? '수집 중...' : '뉴스 수집'}
             </Button>
           </div>
         )}
           </div>
-          
+
           {/* 키워드 수정 모달 */}
           {isKeywordModalOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
@@ -564,12 +571,12 @@ export default function NewsScraperPage() {
                     <FiX size={24} />
                   </button>
                 </div>
-                
+
                 <div className="space-y-6">
                   {/* 키워드 입력 */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                      수집할 뉴스 키워드 (선택사항)
+                      수집할 뉴스 키워드
                     </label>
                     <div className="flex gap-2 mb-3">
                       <Input
@@ -600,12 +607,12 @@ export default function NewsScraperPage() {
                           <Badge
                             key={keyword}
                             variant="default"
-                            className="bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 flex items-center gap-1 pr-1"
+                            className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 flex items-center gap-1 pr-1"
                           >
                             {keyword}
                             <button
                               onClick={() => handleRemoveKeyword(keyword)}
-                              className="ml-1 hover:text-purple-900 dark:hover:text-purple-100 transition-colors"
+                              className="ml-1 hover:text-blue-900 dark:hover:text-blue-100 transition-colors"
                               aria-label={`${keyword} 제거`}
                             >
                               <FiX size={12} />
@@ -615,10 +622,10 @@ export default function NewsScraperPage() {
                       </div>
                     )}
                     <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                      키워드를 입력하면 제목이나 내용에 해당 키워드가 포함된 뉴스만 수집됩니다. (선택사항)
+                      키워드를 입력하면 해당 키워드가 포함된 뉴스만 수집합니다.
                     </p>
                   </div>
-                  
+
                   <div className="flex gap-3 justify-end pt-4 border-t border-gray-200 dark:border-gray-700">
                     <Button
                       type="button"
@@ -657,7 +664,7 @@ export default function NewsScraperPage() {
                     <FiX size={24} />
                   </button>
                 </div>
-                
+
                 <div className="space-y-6">
                   {/* 안내 메시지 */}
                   <div>
@@ -677,7 +684,7 @@ export default function NewsScraperPage() {
                           <Badge
                             key={keyword}
                             variant="default"
-                            className="bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300"
+                            className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
                           >
                             {keyword}
                           </Badge>
@@ -685,7 +692,7 @@ export default function NewsScraperPage() {
                       </div>
                     </div>
                   )}
-                  
+
                   <div className="flex gap-3 justify-end pt-4 border-t border-gray-200 dark:border-gray-700">
                     <Button
                       type="button"
@@ -710,190 +717,225 @@ export default function NewsScraperPage() {
           )}
 
           {/* 통계 카드 */}
-          <div className="grid gap-4 md:grid-cols-4">
-            <Card className="p-4">
+          <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+            <Card className="p-5 hover:shadow-lg transition-shadow">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">전체 뉴스</p>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">전체 뉴스</p>
+                  <p className="text-3xl font-bold text-gray-900 dark:text-white">
                     {stats.totalArticles}
                   </p>
                 </div>
-                <FiFileText className="w-8 h-8 text-blue-500 dark:text-blue-400 opacity-50" />
+                <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                  <FiFileText className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                </div>
               </div>
             </Card>
-            <Card className="p-4">
+            <Card className="p-5 hover:shadow-lg transition-shadow">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">오늘의 뉴스</p>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">오늘</p>
+                  <p className="text-3xl font-bold text-gray-900 dark:text-white">
                     {stats.todayArticles}
                   </p>
                 </div>
-                <FiCalendar className="w-8 h-8 text-green-500 dark:text-green-400 opacity-50" />
+                <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-lg">
+                  <FiCalendar className="w-6 h-6 text-green-600 dark:text-green-400" />
+                </div>
               </div>
             </Card>
-            <Card className="p-4">
+            <Card className="p-5 hover:shadow-lg transition-shadow">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">평균 중요도</p>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">평균 중요도</p>
+                  <p className="text-3xl font-bold text-gray-900 dark:text-white">
                     {stats.avgImportance.toFixed(1)}
                   </p>
                 </div>
-                <FiStar className="w-8 h-8 text-yellow-500 dark:text-yellow-400 opacity-50" />
+                <div className="p-3 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg">
+                  <FiStar className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
+                </div>
               </div>
             </Card>
-            <Card className="p-4">
+            <Card className="p-5 hover:shadow-lg transition-shadow">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">마지막 수집</p>
-                  <p className="text-sm font-medium text-gray-900 dark:text-white mt-1">
-                    {stats.lastScraping ? formatTimeAgo(stats.lastScraping) : '아직 없음'}
+                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">마지막 수집</p>
+                  <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                    {stats.lastScraping ? formatTimeAgo(stats.lastScraping) : '-'}
                   </p>
                 </div>
-                <FiClock className="w-8 h-8 text-purple-500 dark:text-purple-400 opacity-50" />
+                <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
+                  <FiClock className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+                </div>
               </div>
             </Card>
           </div>
 
-          {/* 검색 및 필터 */}
-          <Card className="p-4">
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="flex-1">
-                <div className="relative">
-                  <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
-                  <Input
-                    type="text"
-                    placeholder="뉴스 검색..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
-                  />
+          {/* 검색 및 필터 - 네이버 뉴스 스타일 */}
+          <Card className="p-6 bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-900">
+            <div className="space-y-4">
+              {/* 메인 검색창 */}
+              <div className="relative">
+                <FiSearch className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500" size={22} />
+                <Input
+                  type="text"
+                  placeholder="뉴스 제목, 키워드로 검색..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-12 pr-12 py-4 text-lg font-medium border-2 border-gray-300 dark:border-gray-600 focus:border-blue-500 dark:focus:border-blue-400 rounded-xl shadow-sm"
+                />
+                {(searchTerm || selectedCategory !== 'all') && (
+                  <button
+                    onClick={handleClearSearch}
+                    className="absolute right-4 top-1/2 transform -translate-y-1/2 p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                    aria-label="검색 초기화"
+                  >
+                    <FiX className="text-gray-500 dark:text-gray-400" size={20} />
+                  </button>
+                )}
+              </div>
+
+              {/* 필터 옵션 */}
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex-1 flex items-center gap-2 bg-white dark:bg-gray-800 rounded-lg p-1 border border-gray-200 dark:border-gray-700">
+                  <FiFilter className="ml-2 text-gray-400" size={18} />
+                  <Select
+                    value={selectedCategory}
+                    onChange={(e) => setSelectedCategory(e.target.value)}
+                    className="flex-1 border-0 bg-transparent focus:ring-0"
+                  >
+                    {categories.map(cat => (
+                      <option key={cat} value={cat}>
+                        {cat === 'all' ? '전체 카테고리' : cat}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="flex-1 flex items-center gap-2 bg-white dark:bg-gray-800 rounded-lg p-1 border border-gray-200 dark:border-gray-700">
+                  <FiTrendingUp className="ml-2 text-gray-400" size={18} />
+                  <Select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as 'published_at' | 'importance_score')}
+                    className="flex-1 border-0 bg-transparent focus:ring-0"
+                  >
+                    <option value="published_at">최신순</option>
+                    <option value="importance_score">중요도순</option>
+                  </Select>
                 </div>
               </div>
-              <Select
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
-                className="w-full sm:w-40"
-              >
-                {categories.map(cat => (
-                  <option key={cat} value={cat}>
-                    {cat === 'all' ? '전체 카테고리' : cat}
-                  </option>
-                ))}
-              </Select>
-              <Select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as 'published_at' | 'importance_score')}
-                className="w-full sm:w-48"
-              >
-                <option value="published_at">최신순</option>
-                <option value="importance_score">중요도순</option>
-              </Select>
+
+              {/* 검색 결과 카운트 */}
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-600 dark:text-gray-400 font-medium">
+                  {searchTerm || selectedCategory !== 'all'
+                    ? `검색 결과 ${filteredArticles.length}개`
+                    : `전체 ${filteredArticles.length}개`}
+                </span>
+                {(searchTerm || selectedCategory !== 'all') && (
+                  <button
+                    onClick={handleClearSearch}
+                    className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium flex items-center gap-1"
+                  >
+                    <FiTrash2 size={14} />
+                    초기화
+                  </button>
+                )}
+              </div>
             </div>
           </Card>
 
-          {/* 뉴스 목록 */}
+          {/* 뉴스 목록 - 그리드 레이아웃 */}
           {isLoading ? (
             <LoadingState message="뉴스를 불러오는 중..." />
           ) : filteredArticles.length === 0 ? (
-            <EmptyState
-              message={searchTerm || selectedCategory !== 'all' ? '검색 결과가 없습니다.' : '등록된 뉴스가 없습니다.'}
-            />
+            <Card className="p-12">
+              <EmptyState
+                message={searchTerm || selectedCategory !== 'all' ? '검색 결과가 없습니다.' : '등록된 뉴스가 없습니다.'}
+              />
+            </Card>
           ) : (
-            <div className="space-y-4">
+            <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
               {filteredArticles.map((article) => (
-                <Card key={article.id} hover className="p-6">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      {/* 헤더 */}
-                      <div className="flex items-center gap-2 flex-wrap mb-3">
-                        <Badge variant={getSourceBadgeVariant(article.source)}>
-                          {article.source === 'naver' ? '네이버' : article.source === 'daum' ? '다음' : 'RSS'}
+                <Card key={article.id} hover className="p-6 flex flex-col h-full hover:shadow-xl transition-all duration-200 border-2 border-transparent hover:border-blue-200 dark:hover:border-blue-800">
+                  {/* 헤더 배지 */}
+                  <div className="flex items-center gap-2 flex-wrap mb-3">
+                    <Badge variant={getSourceBadgeVariant(article.source)} className="font-semibold">
+                      {article.source === 'naver' ? '네이버' : article.source === 'daum' ? '다음' : 'RSS'}
+                    </Badge>
+                    {article.refinedCategory && (
+                      <Badge variant="default" className="font-medium">
+                        {article.refinedCategory}
+                      </Badge>
+                    )}
+                    {article.importanceScore != null && (
+                      <div className="flex items-center gap-1 text-sm text-yellow-600 dark:text-yellow-400 font-semibold">
+                        <FiStar size={14} fill="currentColor" />
+                        {article.importanceScore.toFixed(1)}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 제목 */}
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-3 line-clamp-3 flex-grow">
+                    {article.title}
+                  </h3>
+
+                  {/* 요약 */}
+                  {article.summary && (
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">
+                      {article.summary}
+                    </p>
+                  )}
+
+                  {/* 원라인 */}
+                  {article.oneLiner && (
+                    <p className="text-sm font-medium text-blue-600 dark:text-blue-400 mb-3 line-clamp-2">
+                      💡 {article.oneLiner}
+                    </p>
+                  )}
+
+                  {/* 키워드 */}
+                  {article.keywords && article.keywords.length > 0 && (
+                    <div className="flex items-center gap-2 flex-wrap mb-4">
+                      {article.keywords.slice(0, 3).map((keyword, idx) => (
+                        <Badge key={idx} variant="default" className="text-xs">
+                          #{keyword}
                         </Badge>
-                        {article.refinedCategory && (
-                          <Badge variant="default">
-                            {article.refinedCategory}
-                          </Badge>
-                        )}
-                        {article.sentiment && (
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getSentimentColor(article.sentiment)}`}>
-                            {article.sentiment}
-                          </span>
-                        )}
-                        {article.importanceScore != null && (
-                          <div className="flex items-center gap-1 text-sm text-yellow-600 dark:text-yellow-400">
-                            <FiStar size={14} fill="currentColor" />
-                            <span className="font-semibold">{article.importanceScore.toFixed(1)}</span>
-                          </div>
-                        )}
-                        <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
-                          <FiClock size={12} />
-                          {formatTimeAgo(article.publishedAt)}
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 하단: 시간 및 액션 */}
+                  <div className="mt-auto pt-4 border-t border-gray-200 dark:border-gray-700">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 font-medium">
+                        <FiClock size={12} />
+                        {formatTimeAgo(article.publishedAt)}
+                      </span>
+                      {article.sentiment && (
+                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getSentimentColor(article.sentiment)}`}>
+                          {article.sentiment}
                         </span>
-                      </div>
-
-                      {/* 제목 */}
-                      <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2 line-clamp-2">
-                        {article.title}
-                      </h3>
-
-                      {/* 요약 */}
-                      {article.summary && (
-                        <p className="text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">
-                          {article.summary}
-                        </p>
                       )}
+                    </div>
 
-                      {/* 원라인 */}
-                      {article.oneLiner && (
-                        <p className="text-sm font-medium text-blue-600 dark:text-blue-400 mb-3">
-                          💡 {article.oneLiner}
-                        </p>
-                      )}
-
-                      {/* 키워드 */}
-                      {article.keywords && article.keywords.length > 0 && (
-                        <div className="flex items-center gap-2 flex-wrap mb-3">
-                          <FiTag size={14} className="text-gray-400" />
-                          {article.keywords.map((keyword, idx) => (
-                            <Badge key={idx} variant="default" className="text-xs">
-                              {keyword}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* 액션 버튼 */}
-                      <div className="flex items-center gap-2 mt-4">
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={() => setSelectedArticle(article)}
-                        >
-                          상세보기
-                        </Button>
-                        {!article.importanceScore && (
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => handleAnalyzeArticle(article.id!)}
-                            disabled={analyzingArticleId === article.id}
-                            icon={<FiZap size={14} className={analyzingArticleId === article.id ? 'animate-pulse' : ''} />}
-                          >
-                            {analyzingArticleId === article.id ? '분석 중...' : '분석하기'}
-                          </Button>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => window.open(article.url, '_blank')}
-                          icon={<FiExternalLink size={16} />}
-                        >
-                          원문 보기
-                        </Button>
-                      </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => setSelectedArticle(article)}
+                        className="flex-1"
+                      >
+                        상세보기
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => window.open(article.url, '_blank')}
+                        icon={<FiExternalLink size={16} />}
+                        className="px-3"
+                      />
                     </div>
                   </div>
                 </Card>
@@ -903,19 +945,19 @@ export default function NewsScraperPage() {
 
           {/* 상세 보기 모달 */}
           {selectedArticle && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50 backdrop-blur-sm">
               <Card className="w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-                <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center justify-between mb-6 sticky top-0 bg-white dark:bg-gray-800 pb-4 border-b border-gray-200 dark:border-gray-700">
                   <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
                     뉴스 상세
                   </h2>
-                  <Button
-                    variant="ghost"
-                    size="sm"
+                  <button
                     onClick={() => setSelectedArticle(null)}
+                    className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors"
+                    aria-label="닫기"
                   >
-                    닫기
-                  </Button>
+                    <FiX size={24} />
+                  </button>
                 </div>
 
                 <div className="space-y-4">
@@ -1048,6 +1090,18 @@ export default function NewsScraperPage() {
                     >
                       원문 보기
                     </Button>
+                    {!selectedArticle.importanceScore && (
+                      <Button
+                        variant="secondary"
+                        onClick={() => {
+                          setSelectedArticle(null);
+                          handleAnalyzeArticle(selectedArticle.id!);
+                        }}
+                        icon={<FiZap size={14} />}
+                      >
+                        분석하기
+                      </Button>
+                    )}
                     <Button
                       variant="secondary"
                       onClick={() => setSelectedArticle(null)}
