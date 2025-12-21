@@ -254,10 +254,11 @@ export default function EditFeatureModal({ isOpen, onClose, onSuccess, feature }
               value={formData.url}
               onChange={(e) => setFormData({ ...formData, url: e.target.value })}
               required
-              disabled={isLoading}
+              disabled={true}
             >
               <option value="__custom__">직접 입력</option>
               <option value="/features/world-clock?id=world-clock">세계시간</option>
+              <option value="/features/calendar?id=calendar">캘린더</option>
             </Select>
             {formData.url === '__custom__' && (
               <Input
@@ -266,11 +267,11 @@ export default function EditFeatureModal({ isOpen, onClose, onSuccess, feature }
                 value={formData.customUrl || ''}
                 onChange={(e) => setFormData({ ...formData, customUrl: e.target.value })}
                 className="mt-2"
-                disabled={isLoading}
+                disabled={true}
               />
             )}
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              내부 기능을 선택하거나 외부 웹사이트 URL을 직접 입력할 수 있습니다.
+              기능 생성 후 URL은 변경할 수 없습니다.
             </p>
           </div>
 
