@@ -1,12 +1,15 @@
 'use client';
 
 import { useState, FormEvent, useEffect } from 'react';
+import { getActiveFeatureTemplates, initializeFeatureTemplates } from '@/lib/firebase/featureTemplates';
+import type { FeatureTemplate } from '@/lib/firebase/featureTemplates';
 import { FiX, FiGlobe, FiFileText, FiTag, FiLink, FiLock, FiUnlock, FiCheckCircle, FiClock } from 'react-icons/fi';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Toggle } from '@/components/ui/Toggle';
+import { Badge } from '@/components/ui/Badge';
 import { updateFeature, type Feature } from '@/lib/firebase/features';
 
 interface EditFeatureModalProps {
@@ -28,6 +31,9 @@ const categories = [
   '기타',
 ];
 
+const newsCategories = ['IT', '경제', '정치', '사회', '기타'] as const;
+const newsSources = ['naver', 'daum', 'rss'] as const;
+
 export default function EditFeatureModal({ isOpen, onClose, onSuccess, feature }: EditFeatureModalProps) {
   const [formData, setFormData] = useState({
     name: '',
@@ -37,9 +43,68 @@ export default function EditFeatureModal({ isOpen, onClose, onSuccess, feature }
     customUrl: '', // 직접 입력한 URL
     isPublic: true,
     status: 'completed' as 'completed' | 'coming_soon',
+    newsKeywords: [] as string[], // 뉴스 스크래퍼 키워드
+    newsSources: ['naver', 'daum'] as string[], // 뉴스 스크래퍼 소스
   });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [featureTemplates, setFeatureTemplates] = useState<FeatureTemplate[]>([]);
+  const [newKeywordInput, setNewKeywordInput] = useState('');
+  
+  // 뉴스 스크래퍼인지 확인
+  const isNewsScraper = formData.url.includes('news-scraper');
+  
+  // 기본 템플릿 (에러 시 fallback용)
+  const DEFAULT_FALLBACK_TEMPLATES: FeatureTemplate[] = [
+    {
+      id: 'world-clock',
+      name: '세계시간',
+      url: '/features/world-clock?id=world-clock',
+      description: '전 세계 도시의 현재 시간을 확인할 수 있습니다',
+      category: '생산성',
+      isActive: true,
+      order: 1,
+    },
+    {
+      id: 'calendar',
+      name: '캘린더',
+      url: '/features/calendar?id=calendar',
+      description: '일정 관리 및 캘린더 기능',
+      category: '생산성',
+      isActive: true,
+      order: 2,
+    },
+    {
+      id: 'news-scraper',
+      name: '뉴스 스크래퍼',
+      url: '/features/news-scraper?id=news-scraper',
+      description: 'AI 기반 뉴스 자동 수집 및 분석',
+      category: '뉴스',
+      isActive: true,
+      order: 3,
+    },
+  ];
+  
+  // 기능 템플릿 로드
+  useEffect(() => {
+    const loadTemplates = async () => {
+      try {
+        // 템플릿 초기화 (없으면 기본 템플릿 생성)
+        await initializeFeatureTemplates();
+        // 활성화된 템플릿 가져오기
+        const templates = await getActiveFeatureTemplates();
+        setFeatureTemplates(templates);
+      } catch (error) {
+        console.error('기능 템플릿 로드 실패:', error);
+        // 에러가 나도 기본 템플릿 사용 (하드코딩된 목록)
+        setFeatureTemplates(DEFAULT_FALLBACK_TEMPLATES);
+      }
+    };
+    
+    if (isOpen) {
+      loadTemplates();
+    }
+  }, [isOpen]);
 
   // feature가 변경될 때 폼 데이터 업데이트
   useEffect(() => {
@@ -54,9 +119,32 @@ export default function EditFeatureModal({ isOpen, onClose, onSuccess, feature }
         customUrl: isInternalFeature ? '' : (feature.url || ''),
         isPublic: feature.isPublic ?? true,
         status: feature.status || 'completed',
+        newsKeywords: feature.newsKeywords || [],
+        newsSources: feature.newsSources || ['naver', 'daum'],
       });
+      setNewKeywordInput('');
     }
   }, [feature]);
+  
+  // 키워드 추가
+  const handleAddKeyword = () => {
+    const keyword = newKeywordInput.trim();
+    if (keyword && !formData.newsKeywords.includes(keyword)) {
+      setFormData({
+        ...formData,
+        newsKeywords: [...formData.newsKeywords, keyword],
+      });
+      setNewKeywordInput('');
+    }
+  };
+  
+  // 키워드 제거
+  const handleRemoveKeyword = (keyword: string) => {
+    setFormData({
+      ...formData,
+      newsKeywords: formData.newsKeywords.filter(k => k !== keyword),
+    });
+  };
 
   if (!isOpen || !feature || !feature.id) return null;
 
@@ -97,14 +185,30 @@ export default function EditFeatureModal({ isOpen, onClose, onSuccess, feature }
     }
 
     try {
-      await updateFeature(feature.id, {
+      if (!feature.id) {
+        setError('기능 ID가 없습니다.');
+        setIsLoading(false);
+        return;
+      }
+      
+      // 뉴스 스크래퍼인 경우 newsCategories, newsKeywords, newsSources 포함
+      const updateData: any = {
         name: formData.name.trim(),
         description: formData.description.trim(),
         category: formData.category,
         url: (formData.url === '__custom__' ? formData.customUrl : formData.url).trim(),
         isPublic: formData.isPublic,
         status: formData.status,
-      });
+      };
+      
+      // 뉴스 스크래퍼인 경우에만 뉴스 관련 설정 추가
+      if (isNewsScraper) {
+        // 키워드 저장 (없으면 빈 배열)
+        updateData.newsKeywords = formData.newsKeywords.length > 0 ? formData.newsKeywords : [];
+        updateData.newsSources = formData.newsSources;
+      }
+      
+      await updateFeature(feature.id, updateData);
       
       onSuccess();
       onClose();
@@ -257,8 +361,11 @@ export default function EditFeatureModal({ isOpen, onClose, onSuccess, feature }
               disabled={true}
             >
               <option value="__custom__">직접 입력</option>
-              <option value="/features/world-clock?id=world-clock">세계시간</option>
-              <option value="/features/calendar?id=calendar">캘린더</option>
+              {featureTemplates.map((template) => (
+                <option key={template.id} value={template.url}>
+                  {template.name}
+                </option>
+              ))}
             </Select>
             {formData.url === '__custom__' && (
               <Input
@@ -274,6 +381,111 @@ export default function EditFeatureModal({ isOpen, onClose, onSuccess, feature }
               기능 생성 후 URL은 변경할 수 없습니다.
             </p>
           </div>
+
+          {/* 뉴스 스크래퍼 설정 (뉴스 스크래퍼 선택 시만 표시) */}
+          {isNewsScraper && (
+            <>
+              {/* 뉴스 키워드 입력 */}
+              <div>
+                <label htmlFor="edit-newsKeywords" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  <FiTag className="inline w-4 h-4 mr-1" />
+                  수집할 뉴스 키워드 (선택사항)
+                </label>
+                <div className="flex gap-2 mb-3">
+                  <Input
+                    type="text"
+                    placeholder="예: AI, 블록체인, 반도체"
+                    value={newKeywordInput}
+                    onChange={(e) => setNewKeywordInput(e.target.value)}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddKeyword();
+                      }
+                    }}
+                    className="flex-1"
+                    disabled={isLoading}
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={handleAddKeyword}
+                    disabled={!newKeywordInput.trim() || isLoading}
+                  >
+                    추가
+                  </Button>
+                </div>
+                {formData.newsKeywords.length > 0 && (
+                  <div className="flex flex-wrap gap-2 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 min-h-[60px]">
+                    {formData.newsKeywords.map((keyword) => (
+                      <Badge
+                        key={keyword}
+                        variant="default"
+                        className="bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 flex items-center gap-1 pr-1"
+                      >
+                        {keyword}
+                        <button
+                          onClick={() => handleRemoveKeyword(keyword)}
+                          className="ml-1 hover:text-purple-900 dark:hover:text-purple-100 transition-colors"
+                          aria-label={`${keyword} 제거`}
+                          type="button"
+                        >
+                          <FiX size={12} />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  키워드를 입력하면 제목이나 내용에 해당 키워드가 포함된 뉴스만 수집됩니다. (선택사항)
+                </p>
+              </div>
+
+              {/* 뉴스 소스 선택 */}
+              <div>
+                <label htmlFor="edit-newsSources" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  <FiGlobe className="inline w-4 h-4 mr-1" />
+                  뉴스 소스
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {newsSources.map((source) => (
+                    <label
+                      key={source}
+                      className="flex items-center gap-2 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={formData.newsSources.includes(source)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setFormData({
+                              ...formData,
+                              newsSources: [...formData.newsSources, source],
+                            });
+                          } else {
+                            if (formData.newsSources.length > 1) {
+                              setFormData({
+                                ...formData,
+                                newsSources: formData.newsSources.filter(s => s !== source),
+                              });
+                            }
+                          }
+                        }}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        disabled={isLoading || (formData.newsSources.length === 1 && formData.newsSources.includes(source))}
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">
+                        {source === 'naver' ? '네이버' : source === 'daum' ? '다음' : 'RSS'}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  최소 1개 이상 선택해야 합니다.
+                </p>
+              </div>
+            </>
+          )}
 
           {/* 공개/비공개 토글 */}
           <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">

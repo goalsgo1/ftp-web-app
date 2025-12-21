@@ -16,23 +16,16 @@ let app: FirebaseApp;
 let auth: Auth;
 let db: Firestore;
 
-if (typeof window !== 'undefined') {
-  // 클라이언트 사이드
-  if (!getApps().length) {
-    app = initializeApp(firebaseConfig);
-  } else {
-    app = getApps()[0];
-  }
-  auth = getAuth(app);
-  db = getFirestore(app);
+// Firebase 앱 초기화
+if (!getApps().length) {
+  app = initializeApp(firebaseConfig);
 } else {
-  // 서버 사이드 (초기화만)
-  if (!getApps().length) {
-    app = initializeApp(firebaseConfig);
-  } else {
-    app = getApps()[0];
-  }
+  app = getApps()[0];
 }
+
+// 클라이언트 사이드와 서버 사이드 모두에서 사용 가능하도록 초기화
+auth = getAuth(app);
+db = getFirestore(app);
 
 export { auth, db };
 export default app;

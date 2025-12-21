@@ -24,6 +24,9 @@ export interface Feature {
   isPublic?: boolean; // 공개/비공개
   status?: 'completed' | 'coming_soon'; // 완료/준비중
   createdBy?: string; // 생성한 사용자 ID
+  // 뉴스 스크래퍼 관련 설정 (뉴스 스크래퍼 기능인 경우)
+  newsKeywords?: string[]; // 수집할 뉴스 키워드 (예: ["AI", "블록체인", "반도체"])
+  newsSources?: ('naver' | 'daum' | 'rss')[]; // 수집할 뉴스 소스
   createdAt?: Date;
   updatedAt?: Date;
 }

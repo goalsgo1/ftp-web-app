@@ -13,6 +13,15 @@ Firestore 복합 인덱스 설정 가이드입니다.
 - 에러 해결 방법
 - 인덱스 생성 후 확인 방법
 
+### [뉴스 스크래퍼 인덱스 설정](../../news-scraper-project/FIRESTORE_INDEXES.md)
+
+뉴스 스크래퍼 기능을 사용하기 위한 Firestore 인덱스 설정 가이드입니다.
+
+**주요 내용:**
+- 뉴스 아티클 조회용 인덱스 생성 방법
+- 여러 필터링 옵션별 인덱스 목록
+- 에러 해결 방법
+
 ---
 
 ## 🎯 빠른 요약
@@ -40,6 +49,9 @@ The query requires an index. You can create it here: [링크]
 | 컬렉션 | 필드 | 용도 |
 |--------|------|------|
 | `calendarEvents` | `featureId` (Asc), `date` (Desc) | 공개 캘린더 이벤트 조회 |
+| `newsArticles` | `featureId` (Asc), `publishedAt` (Desc) | 뉴스 목록 조회 |
+| `newsArticles` | `featureId` (Asc), `refinedCategory` (Asc), `publishedAt` (Desc) | 카테고리별 뉴스 조회 |
+| `scrapingJobs` | `featureId` (Asc), `startedAt` (Desc) | 스크래핑 작업 목록 조회 |
 
 ---
 

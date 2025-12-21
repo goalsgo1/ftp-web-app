@@ -48,6 +48,18 @@
 - `docs/FEATURE_LIST_VS_SUBSCRIPTION_MANAGEMENT.md` - 기능 목록 vs 구독 관리 비교
 - `docs/FIRESTORE_SUBSCRIPTIONS_SCHEMA.md` - Firestore 구독 스키마
 - `docs/FIREBASE_PROJECT_RECREATION_GUIDE.md` - Firebase 프로젝트 재생성 가이드
+
+#### 에이전트 시스템 (agent-system)
+**목적**: Claude API를 활용한 24시간 자동화 에이전트 시스템
+- `docs/agent-system/HOW_IT_WORKS.md` - ⭐ 실행 방식 설명 (먼저 읽기!)
+- `docs/agent-system/AGENT_ARCHITECTURE.md` - 에이전트 시스템 아키텍처 설계
+- `docs/agent-system/IMPLEMENTATION_GUIDE.md` - 단계별 구현 가이드
+- `docs/agent-system/QUICK_START.md` - 5분 만에 시작하기
+- `docs/agent-system/ENV_SETUP.md` - 환경 변수 설정 가이드
+- `docs/agent-system/BILLING_GUIDE.md` - 💳 결제 및 크레딧 가이드 (크레딧 부족 시 참고)
+- `docs/agent-system/IMPLEMENTATION_SUMMARY.md` - 구현 완료 요약 (✅ 완료)
+- `docs/agent-system/ANALYSIS_FEATURE_EXPLANATION.md` - 분석 기능 상세 설명
+- `docs/agent-system/IMPLEMENTATION_COMPLETE.md` - 🎉 전체 기능 구현 완료 요약 (✅ 완료)
 - `docs/FIREBASE_VS_SELF_HOSTED_COMPARISON.md` - Firebase vs Self-Hosted 비교
 
 ---
@@ -128,6 +140,11 @@ my-dashboard/
     │   ├── CHECKLIST.md
     │   ├── TODO_PROMPTS.md
     │   └── FIREBASE_SETUP_GUIDE.md
+    │
+    ├── agent-system/                     # 에이전트 시스템
+    │   ├── AGENT_ARCHITECTURE.md
+    │   ├── IMPLEMENTATION_GUIDE.md
+    │   └── QUICK_START.md
     │
     └── [시스템 설계 문서들]
         ├── CALENDAR_JOURNAL_SYSTEM_DESIGN.md
