@@ -146,15 +146,15 @@ export default function NotificationHistory() {
                   {formatTime(notif.timestamp)}
                 </p>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                icon={expandedId === notif.id ? <FiChevronUp size={20} /> : <FiChevronDown size={20} />}
+              <button
+                className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
                 onClick={(e) => {
                   e.stopPropagation();
                   setExpandedId(expandedId === notif.id ? null : notif.id);
                 }}
-              />
+              >
+                {expandedId === notif.id ? <FiChevronUp size={20} /> : <FiChevronDown size={20} />}
+              </button>
             </div>
           </Card>
         ))}
