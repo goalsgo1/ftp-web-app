@@ -1,20 +1,21 @@
 'use client';
 
-import { ReactNode, forwardRef } from 'react';
+import { forwardRef } from 'react';
 import { cardPadding } from '@/styles/variants';
 import { CardPadding } from '@/types/ui.types';
 import { BaseComponentProps } from '@/types/ui.types';
 
-interface CardProps extends BaseComponentProps {
+export interface CardProps extends BaseComponentProps, Omit<React.HTMLAttributes<HTMLDivElement>, 'className'> {
   hover?: boolean;
   padding?: CardPadding;
 }
 
-export const Card = forwardRef<HTMLDivElement, CardProps>(({ 
-  children, 
+export const Card = forwardRef<HTMLDivElement, CardProps>(({
+  children,
   hover = false,
   padding = 'md',
-  className = '' 
+  className = '',
+  ...rest
 }, ref) => {
   return (
     <div
@@ -27,6 +28,7 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(({
         ${hover ? 'hover:shadow-md transition-shadow duration-150' : ''}
         ${className}
       `}
+      {...rest}
     >
       {children}
     </div>
